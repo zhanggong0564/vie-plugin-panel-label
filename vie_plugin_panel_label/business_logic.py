@@ -8,7 +8,7 @@
 '''
 
 from .panel_label_detect import OCRPipeline, PanellabelItem
-from schemas import MoMResult, DetectResult, DetectionItem
+from schemas import MoMResult, DetectionItem
 from schemas.exceptions import ProductNotRegisteredError, ModelInferenceError
 from services.api import detection_factory
 from services.base import BusinessLogicBase

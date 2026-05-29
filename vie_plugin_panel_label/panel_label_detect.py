@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 
 import time
 from utils import vision_logger
-from .product_type import PRODUCT_guideline
 
 
 @dataclass
