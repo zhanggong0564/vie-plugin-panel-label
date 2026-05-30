@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=61", "Cython>=3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,7 +9,7 @@ description = "VIE 线标 OCR 检测插件"
 requires-python = ">=3.10"
 # 生产环境应声明依赖 "vie-framework"；in-repo demo 用 --no-deps 安装，
 # 框架的 services/schemas/routers 由仓库根目录在 sys.path 上提供。
-dependencies = []
+dependencies = ["vie-framework"]
 
 [project.entry-points."vie.plugins"]
 panel_label = "vie_plugin_panel_label.plugin"
