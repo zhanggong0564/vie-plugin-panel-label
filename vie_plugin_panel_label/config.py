@@ -15,12 +15,13 @@ class PanelLabelConfig:
     confThreshold = 0.7
     nmsThreshold = 0.8
     # TextDetection
-    text_det_limit_side_len = 480
+    text_det_model_path = "./weights/panel_label/PP-OCRv5_mobile_det_panel_v1"
+    text_det_limit_side_len = 1248
     text_det_limit_type = "max"
     text_det_thresh = 0.3
     text_det_box_thresh = 0.3
-    text_det_unclip_ratio = 2.0
-    text_det_input_shape = [3, 128, 640]
+    text_det_unclip_ratio = 3.0
+    text_det_input_shape = [3, 160, 1248]
     # TextRecognition
     text_rec_score_thresh = 0.7
     text_rec_input_shape = [3, 48, 320]
