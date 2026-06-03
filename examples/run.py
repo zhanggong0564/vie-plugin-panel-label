@@ -34,7 +34,6 @@ from vie_plugin_panel_label import PRODUCT_guideline  # noqa: E402
 from vie_plugin_panel_label.product_type import PRODUCT_TYPE  # noqa: E402
 from services.api import detection_factory  # noqa: E402
 from schemas.data_base import InputParamsBusiness  # noqa: E402
-from schemas.exceptions import ProductNotRegisteredError  # noqa: E402
 
 
 def detect(detector, image, product_type, rule):
@@ -43,16 +42,21 @@ def detect(detector, image, product_type, rule):
     与 BusinessLogicBase.detect 等价（单次推理），但额外暴露 ctx.raw_result：
         result = ctx.result      生产响应 MoMResult（坐标已归一化，等同 API 输出）
         item   = ctx.raw_result  PanellabelItem（原图像素坐标，含 text_det_points 供可视化）
-    product_type 未注册时返回 (item, None)，仅画框不判定。
+
+    生产环境里标准顺序(standard_result)与引导框(guideline)随请求下发；示例为方便
+    测试仍从本地 PRODUCT_TYPE / PRODUCT_guideline 词典读取并经 ctx.extra 注入。
+    型号未在本地词典登记时返回 (item, None)，仅画框不判定。
     """
-    params = InputParamsBusiness(image=image, product_type=product_type, rule=rule)
+    standard_result = PRODUCT_TYPE.get(product_type)
+    guideline = PRODUCT_guideline.get(product_type)
+    extra = {"standard_result": standard_result, "guideline": guideline}
+    params = InputParamsBusiness(image=image, product_type=product_type, rule=rule, extra=extra)
     ctx = detector.build_context(params)
     detector.preprocess_hook(ctx)
     ctx.raw_result = detector.detector.infer(ctx.image)
-    try:
-        detector.business_post_process(ctx)
-    except ProductNotRegisteredError:
+    if standard_result is None or guideline is None:
         return ctx.raw_result, None
+    detector.business_post_process(ctx)
     if detector.should_normalize(ctx):
         detector.normalize_hook(ctx)
     detector.finalize_hook(ctx)

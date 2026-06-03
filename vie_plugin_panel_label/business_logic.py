@@ -10,11 +10,10 @@
 from .panel_label_detect import OCRPipeline
 from .models import ErrorType, PanelInfo, PanellabelItem
 from schemas import MoMResult, DetectionItem
-from schemas.exceptions import ProductNotRegisteredError, ModelInferenceError
+from schemas.exceptions import InvalidParamsError, ModelInferenceError
 from services.api import detection_factory
 from services.base import BusinessLogicBase
 from utils import vision_logger
-from .product_type import PRODUCT_TYPE, PRODUCT_guideline
 from .utils import rect_contains
 
 
@@ -57,8 +56,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 original_error=e,
             )
 
-    def guideline_filter(self, results: PanellabelItem, product_type: str, img_w: int, img_h: int):
-        norm_rect = PRODUCT_guideline[product_type]
+    def guideline_filter(self, results: PanellabelItem, norm_rect, img_w: int, img_h: int):
         x_norm, y_norm, w_norm, h_norm = norm_rect
         rect = (int(x_norm * img_w), int(y_norm * img_h), int(w_norm * img_w), int(h_norm * img_h))
         boxes = results.Points
@@ -84,15 +82,17 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         return filtered_results
 
     def business_post_process(self, ctx):
-        product_type = ctx.product_type
-        if product_type not in PRODUCT_TYPE or product_type not in PRODUCT_guideline:
-            raise ProductNotRegisteredError(
-                f"产品型号 '{product_type}' 未在 panel_label PRODUCT_TYPE 中注册",
-                product_type=product_type,
+        # 标准顺序与引导框由请求经 ctx.extra 下发，不再从本地词典读取。
+        standard_result = ctx.extra.get("standard_result")
+        norm_rect = ctx.extra.get("guideline")
+        if not standard_result or not norm_rect:
+            raise InvalidParamsError(
+                "panel_label 缺少 line_order 或 guideline_coordinates 参数",
+                product_type=ctx.product_type,
                 scenario="panel_label",
             )
-        results = self.guideline_filter(ctx.raw_result, product_type, ctx.w, ctx.h)
-        panel_info = self.analyze(results, product_type, ctx.rule)
+        results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
+        panel_info = self.analyze(results, standard_result, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
@@ -153,8 +153,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         else:  # "all"
             return text.lower()
 
-    def analyze(self, observed_result: PanellabelItem, product_type: str, rule: str = "all") -> PanelInfo:
-        standard_result = PRODUCT_TYPE[product_type]
+    def analyze(self, observed_result: PanellabelItem, standard_result, rule: str = "all") -> PanelInfo:
         corrected_texts = [self._fix_slash_misrecognition(t) for t in observed_result.texts]
         panel_info = PanelInfo(
             standard_result=standard_result,
