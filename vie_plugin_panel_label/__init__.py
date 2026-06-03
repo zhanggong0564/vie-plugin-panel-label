@@ -7,6 +7,7 @@
 @Description  :
 '''
 
+from .models import PanellabelItem, PanelInfo, ErrorType
 from .panel_label_detect import OCRPipeline, OCRPipelineCrop
 from .business_logic import PanelLabelJudgeApi
 from .product_type import PRODUCT_TYPE, PRODUCT_guideline

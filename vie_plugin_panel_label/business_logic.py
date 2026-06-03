@@ -7,42 +7,15 @@
 @Description  :
 '''
 
-from .panel_label_detect import OCRPipeline, PanellabelItem
+from .panel_label_detect import OCRPipeline
+from .models import ErrorType, PanelInfo, PanellabelItem
 from schemas import MoMResult, DetectionItem
 from schemas.exceptions import ProductNotRegisteredError, ModelInferenceError
 from services.api import detection_factory
 from services.base import BusinessLogicBase
 from utils import vision_logger
 from .product_type import PRODUCT_TYPE, PRODUCT_guideline
-from dataclasses import dataclass
-from typing import List, Dict
-from enum import Enum
-from dataclasses import field
 from .utils import rect_contains
-
-
-class ErrorType(str, Enum):
-    MISSING = "missing"
-    EXTRA = "extra"
-    MISMATCH = "mismatch"
-    UNKNOWN = "unknown"
-    OK = "ok"
-
-
-@dataclass
-class PanelInfo:
-    result: bool = False
-    product_type: str = ""
-    # 标准ocr结果
-    standard_result: list[str] = field(default_factory=list)
-    # 观察到的ocr结果
-    observed_result: list[str] = field(default_factory=list)
-    # 观察到的ocr结果的点坐标
-    observed_result_points: list[list[float]] = field(default_factory=list)
-    message: str = ErrorType.UNKNOWN.value
-    error_indexs: list[int] = field(default_factory=list)
-    class_id: List[int] = field(default_factory=list)
-    confidence: list[float] = field(default_factory=list)
 
 
 @detection_factory.register("panel_label")
@@ -57,6 +30,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     def _initialize_model(self, settings):
         from .config import PanelLabelConfig
+
         cfg = PanelLabelConfig()
         try:
             self.detector = OCRPipeline(
@@ -67,6 +41,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 cfg.nmsThreshold,
                 cfg.text_rec_score_thresh,
                 cfg.text_rec_input_shape,
+                cfg.text_det_model_path,
                 cfg.text_det_limit_side_len,
                 cfg.text_det_limit_type,
                 cfg.text_det_thresh,
@@ -103,6 +78,8 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             class_id=[results.class_id[i] for i in keep_indices],
             texts=[results.texts[i] for i in keep_indices],
             confidence=[results.confidence[i] for i in keep_indices],
+            text_det_points=[results.text_det_points[i] for i in keep_indices] if results.text_det_points else [],
+            text_crops=[results.text_crops[i] for i in keep_indices] if results.text_crops else [],
         )
         return filtered_results
 
@@ -114,8 +91,8 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 product_type=product_type,
                 scenario="panel_label",
             )
-        results = self.guideline_filter(ctx.raw_result, product_type, ctx.w, ctx.h)
-        panel_info = self.analyze(results, product_type, ctx.rule)
+        # results = self.guideline_filter(ctx.raw_result, product_type, ctx.w, ctx.h)
+        panel_info = self.analyze(ctx.raw_result, product_type, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message

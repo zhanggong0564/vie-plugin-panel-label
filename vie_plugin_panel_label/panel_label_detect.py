@@ -13,29 +13,25 @@ import numpy as np
 from schemas.data_base import DetectResult
 from paddleocr import TextDetection, TextLineOrientationClassification, TextRecognition
 from paddlex.inference.pipelines.components import CropByPolys
-from .utils import Points_to_Mask
-from typing import List
-from dataclasses import dataclass, field
+from .utils import Points_to_Mask, map_roi_points_to_original
+from .models import PanellabelItem
 
+import os
+import yaml
 import time
 from utils import vision_logger
 
 
-@dataclass
-class PanellabelItem:
-    Points: List[np.ndarray] = field(default_factory=list)
-    index: List[int] = field(default_factory=list)
-    class_id: List[int] = field(default_factory=list)
-    texts: List[str] = field(default_factory=list)
-    confidence: List[float] = field(default_factory=list)
+def _resolve_model_name(model_dir: str) -> str:
+    """从导出推理目录的 inference.yml 解析 Global.model_name。
 
-    def save_img(self, image, save_path):
-        for i, point in enumerate(self.Points):
-            image = cv2.polylines(image, [point], True, (0, 255, 0), 2)
-            image = cv2.putText(
-                image, self.texts[i], (point[0][0], point[0][1]), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2
-            )
-        cv2.imwrite(save_path, image)
+    paddleocr 高层封装不会自动解析，需显式传入与目录架构匹配的 model_name，
+    否则会触发 'Model name mismatch' 断言。
+    """
+    cfg_path = os.path.join(model_dir, "inference.yml")
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    return cfg["Global"]["model_name"]
 
 
 class PanelLabelDetect(YoloOnnxInfer):
@@ -57,6 +53,7 @@ class OCRPipeline:
         nmsThreshold=0.5,
         text_rec_score_thresh=0.7,
         text_rec_input_shape=None,
+        text_det_model_path=None,
         text_det_limit_side_len=128,
         text_det_limit_type="min",
         text_det_thresh=0.3,
@@ -66,9 +63,10 @@ class OCRPipeline:
     ):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
 
-        # Stage 1: Text Detection
+        # Stage 1: Text Detection（加载自训练导出的检测推理目录，model_name 从 inference.yml 解析）
         self.text_det_model = TextDetection(
-            model_name="PP-OCRv5_server_det",
+            model_name=_resolve_model_name(text_det_model_path),
+            model_dir=text_det_model_path,
             limit_side_len=text_det_limit_side_len,
             limit_type=text_det_limit_type,
             thresh=text_det_thresh,
@@ -99,7 +97,7 @@ class OCRPipeline:
         mask_polygons = np.array(results.mask_polygons, dtype=object)
         points_line = mask_polygons[class_ids == 0] if 0 in class_ids else []
         start = time.time()
-        mask_rois, sorted_idxs = Points_to_Mask(image, points_line)
+        mask_rois, sorted_idxs, roi_transforms = Points_to_Mask(image, points_line, return_maps=True)
         end = time.time()
         vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
@@ -108,6 +106,7 @@ class OCRPipeline:
         # 每张 roi 只有一个文本行，检测出多个则为误检测，只保留面积最大的
         all_dt_polys = []
         roi_to_idx = []
+        text_det_map: dict = {}  # roi_idx -> 文本检测框（反映射回原图像素坐标，仅可视化用）
         for i, roi in enumerate(mask_rois):
             det_result = self.text_det_model.predict(roi)
             dt_polys = det_result[0]["dt_polys"]
@@ -117,6 +116,7 @@ class OCRPipeline:
             best_poly = dt_polys[int(np.argmax(areas))]
             all_dt_polys.append([best_poly])
             roi_to_idx.append(i)
+            text_det_map[i] = map_roi_points_to_original(roi_transforms[i], best_poly)
         det_end = time.time()
         vision_logger.debug(f"Text Detection: {det_end - start:.4f}秒")
 
@@ -133,6 +133,7 @@ class OCRPipeline:
 
         # Stage 2: Text Line Orientation
         text_map: dict = {}
+        crop_map: dict = {}  # roi_idx -> rotated_crop（识别模型输入小图，供数据回流落盘）
         if all_crops:
             orient_results = self.text_orient_model.predict(all_crops)
             angles = [int(r["class_ids"][0]) for r in orient_results]
@@ -149,6 +150,7 @@ class OCRPipeline:
 
             for crop_idx, rec_res in enumerate(rec_results):
                 roi_idx = crop_roi_map[crop_idx]
+                crop_map[roi_idx] = rotated_crops[crop_idx]
                 rec_text = rec_res["rec_text"]
                 rec_score = rec_res["rec_score"]
                 if isinstance(rec_text, list):
@@ -159,6 +161,8 @@ class OCRPipeline:
         # 所有 YOLO 检测到的线标均进入结果，OCR 未识别的给 None
         all_rois = list(range(len(mask_rois)))
         texts = [text_map.get(i) for i in all_rois]
+        text_det_points = [text_det_map.get(i) for i in all_rois]
+        text_crops = [crop_map.get(i) for i in all_rois]
 
         end = time.time()
         vision_logger.debug(f"OCR 三阶段总耗时: {end - start:.4f}秒")
@@ -176,6 +180,8 @@ class OCRPipeline:
             class_id=roi_classes_ids.tolist(),
             texts=texts,
             confidence=confidences,
+            text_det_points=text_det_points,
+            text_crops=text_crops,
         )
 
         return panel_label_item
