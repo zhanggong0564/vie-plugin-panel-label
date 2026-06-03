@@ -91,8 +91,8 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 product_type=product_type,
                 scenario="panel_label",
             )
-        # results = self.guideline_filter(ctx.raw_result, product_type, ctx.w, ctx.h)
-        panel_info = self.analyze(ctx.raw_result, product_type, ctx.rule)
+        results = self.guideline_filter(ctx.raw_result, product_type, ctx.w, ctx.h)
+        panel_info = self.analyze(results, product_type, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
