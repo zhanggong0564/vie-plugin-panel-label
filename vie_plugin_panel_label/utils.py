@@ -11,7 +11,8 @@ import math
 
 import cv2
 import numpy as np
-from typing import List, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 
 def _rect_long_side_angle_deg(rect):
@@ -138,7 +139,8 @@ def rotate_upright(img, mask):
     mask_r = cv2.warpAffine(
         mask_roi, M, (new_w, new_h), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0
     )
-    return img_r, mask_r
+    # M: crop 坐标 -> img_r 坐标；offset: crop 坐标 -> 原图坐标。供 ROI 点反映射回原图用。
+    return img_r, mask_r, M, (int(x_min), int(y_min))
 
 
 def smooth_1d(y, k):
@@ -191,11 +193,43 @@ def contour_top_bottom(mask):
     return top, bot
 
 
-def mask2roi(img: np.ndarray, points: np.array, smooth=21, sample_step=1, border_mode="replicate") -> List[np.ndarray]:
+@dataclass
+class RoiTransform:
+    """展平 ROI 坐标 -> 原图坐标的反映射元数据（逐条线一份）。
+
+    展平(fx,fy) --top/bot 线性插值--> img_r --Minv 逆仿射--> crop --+offset--> 原图
+    """
+    top: np.ndarray   # (W, 2) img_r 坐标系的上边界采样点
+    bot: np.ndarray   # (W, 2) img_r 坐标系的下边界采样点
+    H: int
+    W: int
+    Minv: np.ndarray  # (2,3) img_r -> crop 的逆仿射
+    offset: Tuple[int, int]  # crop -> 原图 的 (x_min, y_min) 偏移
+
+
+def map_roi_points_to_original(tf: RoiTransform, pts) -> np.ndarray:
+    """把展平 ROI 坐标系下的点 (N,2) 反映射回原图像素坐标 (N,2)。"""
+    pts = np.asarray(pts, dtype=np.float32).reshape(-1, 2)
+    cols = np.clip(np.round(pts[:, 0]).astype(np.int64), 0, tf.W - 1)
+    a = (pts[:, 1] / max(tf.H - 1, 1)).reshape(-1, 1)
+    top = tf.top[cols]
+    bot = tf.bot[cols]
+    imgr = top + a * (bot - top)  # (N,2) img_r 坐标
+    ones = np.ones((imgr.shape[0], 1), dtype=np.float32)
+    crop = np.hstack([imgr.astype(np.float32), ones]) @ tf.Minv.T  # (N,2) crop 坐标
+    crop[:, 0] += tf.offset[0]
+    crop[:, 1] += tf.offset[1]
+    return crop
+
+
+def mask2roi(
+    img: np.ndarray, points: np.array, smooth=21, sample_step=1, border_mode="replicate", return_maps=False
+):
     rois = []
+    transforms: List[Optional[RoiTransform]] = []
     for point in points:
         mask = points_to_mask(img.shape[:2], point)
-        img_r, mask_r = rotate_upright(img, mask)
+        img_r, mask_r, M, offset = rotate_upright(img, mask)
         # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
         # mask_r = cv2.erode(mask_r, kernel, iterations=2)
         # roi = cv2.bitwise_and(img_r, img_r, mask=mask_r)
@@ -228,11 +262,28 @@ def mask2roi(img: np.ndarray, points: np.array, smooth=21, sample_step=1, border
         rois.append(flat)
         # cv2.imwrite("roi.jpg", flat)
 
+        if return_maps:
+            transforms.append(
+                RoiTransform(
+                    top=np.asarray(top, dtype=np.float32),
+                    bot=np.asarray(bot, dtype=np.float32),
+                    H=H,
+                    W=W,
+                    Minv=cv2.invertAffineTransform(M),
+                    offset=offset,
+                )
+            )
+
+    if return_maps:
+        return rois, transforms
     return rois
 
 
-def Points_to_Mask(image_src, points, sort_by="y"):
+def Points_to_Mask(image_src, points, sort_by="y", return_maps=False):
     points_line, sorted_idx = sort_mask(image_src, points, 0.8)
+    if return_maps:
+        mask_rois, transforms = mask2roi(image_src, points_line, return_maps=True)
+        return mask_rois, sorted_idx, transforms
     mask_rois = mask2roi(image_src, points_line)
     return mask_rois, sorted_idx
 
