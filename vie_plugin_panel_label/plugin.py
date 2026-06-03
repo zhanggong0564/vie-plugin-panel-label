@@ -22,9 +22,15 @@ class PanelLabelRouter(BaseRouter):
         return PanelLabelRequest(**json_dict)
 
     def get_inputs(self, request_params: PanelLabelRequest, image: np.ndarray):
-        product_type = request_params.modelParams.product_type
-        rule = request_params.modelParams.rule
-        input = InputParamsBusiness(image=image, product_type=product_type, rule=rule)
+        mp = request_params.modelParams
+        # 标准顺序与引导框随请求下发，经 schema 校验/解析后透传给业务层。
+        extra = {
+            "standard_result": mp.line_order,
+            "guideline": mp.guideline_coordinates,
+        }
+        input = InputParamsBusiness(
+            image=image, product_type=mp.product_type, rule=mp.rule, extra=extra
+        )
         return input
 
 
