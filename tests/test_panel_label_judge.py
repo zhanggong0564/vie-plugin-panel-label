@@ -3,12 +3,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
 from schemas.inference_context import InferenceContext
-from vie_plugin_panel_label.business_logic import (
-    PanelLabelJudgeApi,
-    PanelInfo,
-    ErrorType,
-    PanellabelItem,
-)
+from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
+from vie_plugin_panel_label.models import PanelInfo, ErrorType, PanellabelItem
 from schemas.data_base import DetectionItem
 
 

@@ -24,7 +24,7 @@ def _make_ctx(result, product_type, w=1000, h=1000, rule="all"):
 
 class TestProductTypeValidation:
     def test_unregistered_product_type_raises(self, api_instance):
-        from vie_plugin_panel_label.panel_label_detect import PanellabelItem
+        from vie_plugin_panel_label.models import PanellabelItem
         ctx = _make_ctx(PanellabelItem(), "NON_EXISTENT_TYPE_999")
         with pytest.raises(ProductNotRegisteredError) as exc_info:
             api_instance.business_post_process(ctx)

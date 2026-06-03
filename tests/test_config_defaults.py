@@ -6,3 +6,4 @@ def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
     assert cfg.model_path == "./weights/panel_label/best_v3.onnx"
     assert cfg.confThreshold == 0.7
+    assert cfg.text_det_model_path == "./weights/panel_label/PP-OCRv5_mobile_det_panel_v1"
