@@ -13,7 +13,7 @@ class PanelLabelConfig:
     text_det_model_path = "./weights/panel_label/PP-OCRv5_mobile_det_panel_v1"
     orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori_v3"
     text_recognition_model_path = "./weights/panel_label/PP-OCRv5_server_rec_merged_v4_diff_lr"
-    confThreshold = 0.7
+    confThreshold = 0.6
     nmsThreshold = 0.8
     # TextDetection
 
