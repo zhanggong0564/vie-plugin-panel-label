@@ -48,8 +48,8 @@ PRODUCT_TYPE = {
     ],
     "PH": ["PH-J1-1/PD-J3-2", "PH-J1-3/PD-J3-5", "PH-J2/PD-J32"],
     "S1S2": ["S2-14/PD-J22-1", "S2-13/PD-J22-2", "S1-13/PD-J27-2", "S1-14/PD-J27-1"],
-    "D1": ["D1-1/R2-2", "D1+/DC+", "D1-/DC-", "D1-3/R3-2"],
-    "QF1L1": ["QF1-1/C2-L1", "QF1-1/C4-L1", "QF1-1/C1-L1", "QF1-1/C3-L1"],
+    "D1": ["D1+/DC+", "D1-/DC-", "D1-1/R2-2", "D1-3/R3-2"],
+    "QF1L1": ["QF1-1/C2-L1", "  QF1-1/C4-L1", "QF1-1/C1-L1", "QF1-1/C3-L1"],
     "QF1L2": ["QF1-3/C2-L2", "QF1-3/C4-L2", "QF1-3/C1-L2", "QF1-3/C3-L2"],
     "QF1L3": ["QF1-5/C4-L3", "QF1-5/C2-L3", "QF1-5/C3-L3", "QF1-5/C1-L3"],
     "XB3": [
@@ -445,6 +445,36 @@ PRODUCT_guideline = {
     "HTR2": [0.325333333333333, 0.30875, 0.477333333333333, 0.52125],
     "SPD": [0.01675, 0.173, 0.98075, 0.529],
 }
+
+
+# ---------------------------------------------------------------------------
+# 每型号线标排序模式（服务端按型号固定，免去运行时猜布局/调阈值）。
+#
+# 同一型号物理布局不变，故把"怎么读这组线标"的领域知识固化为 sort_mode 串，
+# 由 ordering.compute_order 解释（语法见 ordering.py 文件头）：
+#   "linear"            单条线/单行/单列/斜排，PCA 主轴投影（偏竖直→上下，偏水平→左右）
+#   "linear:rev"        linear 整体反向
+#   "columns:N"         按 x 间隙分 N 列（左→右），列内上→下
+#   "columns:N:rowrev"  列内下→上（列序仍左→右），如 QF2
+#   "columns:N:colrev"  右列先
+#
+# 未列出的型号用 DEFAULT_SORT_MODE（linear）——单行/单列/斜排/扇形(如 KVM)均适用。
+# 仅二维多列或方向反常的型号需在此登记。
+# ---------------------------------------------------------------------------
+DEFAULT_SORT_MODE = "linear"
+
+PRODUCT_SORT_MODE = {
+    # QF2：断路器两侧两束，左列先、列内从下往上
+    "QF2": "columns:2:rowrev",
+    # D1：二维散布——左列(D1+/D1-) 再 中列(D1-1/D1-3)，列内上→下
+    "D1": "columns:2",
+}
+
+
+def get_sort_mode(product_type: str) -> str:
+    """取型号对应的排序模式串，未登记则回退 DEFAULT_SORT_MODE。"""
+    return PRODUCT_SORT_MODE.get(product_type, DEFAULT_SORT_MODE)
+
 
 if __name__ == "__main__":
     with open("product_type.json", "w") as f:

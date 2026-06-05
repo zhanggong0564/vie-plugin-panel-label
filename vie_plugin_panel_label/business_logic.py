@@ -15,6 +15,8 @@ from services.api import detection_factory
 from services.base import BusinessLogicBase
 from utils import vision_logger
 from .utils import rect_contains
+from .ordering import order_panel_item
+from .product_type import get_sort_mode
 
 
 @detection_factory.register("panel_label")
@@ -91,8 +93,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 product_type=ctx.product_type,
                 scenario="panel_label",
             )
-        results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
-        panel_info = self.analyze(results, standard_result, ctx.rule)
+        # results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
+        # 按型号固定排序模式对线标重排（消除运行时猜布局/调阈值）。
+        ctx.raw_result = order_panel_item(ctx.raw_result, get_sort_mode(ctx.product_type))
+        panel_info = self.analyze(ctx.raw_result, standard_result, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
