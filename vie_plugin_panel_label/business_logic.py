@@ -7,6 +7,7 @@
 @Description  :
 '''
 
+from .config import PanelLabelConfig
 from .panel_label_detect import OCRPipeline
 from .models import ErrorType, PanelInfo, PanellabelItem
 from schemas import MoMResult, DetectionItem
@@ -24,14 +25,13 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     def __init__(self, settings):
         super().__init__(settings)
+        self.enable_guideline_filter = PanelLabelConfig().enable_guideline_filter
         self.class_name = {
             0: "line",
             1: "QFU",
         }
 
     def _initialize_model(self, settings):
-        from .config import PanelLabelConfig
-
         cfg = PanelLabelConfig()
         try:
             self.detector = OCRPipeline(
@@ -88,13 +88,23 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         # 标准顺序与引导框由请求经 ctx.extra 下发，不再从本地词典读取。
         standard_result = ctx.extra.get("standard_result")
         norm_rect = ctx.extra.get("guideline")
-        if not standard_result or not norm_rect:
+        if not standard_result:
             raise InvalidParamsError(
-                "panel_label 缺少 line_order 或 guideline_coordinates 参数",
+                "panel_label 缺少 line_order 参数",
                 product_type=ctx.product_type,
                 scenario="panel_label",
             )
-        results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
+        if self.enable_guideline_filter:
+            # 开关开启时 guideline 仍为必要参数；关闭时跳过 ROI 过滤，参数可缺省。
+            if not norm_rect:
+                raise InvalidParamsError(
+                    "panel_label 缺少 guideline_coordinates 参数",
+                    product_type=ctx.product_type,
+                    scenario="panel_label",
+                )
+            results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
+        else:
+            results = ctx.raw_result
         # 按型号固定排序模式对线标重排（消除运行时猜布局/调阈值）。
         ctx.raw_result = order_panel_item(results, get_sort_mode(ctx.product_type))
         panel_info = self.analyze(ctx.raw_result, standard_result, ctx.rule)

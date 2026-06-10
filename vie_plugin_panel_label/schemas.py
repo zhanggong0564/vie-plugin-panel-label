@@ -23,8 +23,9 @@ class ModelParams(BaseModel):
     # line_order：逗号分隔的标准 OCR 顺序，如 "TK2-2,TK2-1"。
     line_order: List[str] = Field(..., description="标准线标顺序，逗号分隔，如 'TK2-2,TK2-1'")
     # guideline_coordinates：归一化引导框 x,y,w,h，如 "0.154,0.4075,0.692,0.336"。
-    guideline_coordinates: Tuple[float, float, float, float] = Field(
-        ..., description="引导框归一化坐标 x,y,w,h，如 '0.154,0.4075,0.692,0.336'"
+    # 服务端关闭 guideline 过滤（PANEL_LABEL_GUIDELINE_FILTER=false）时可不传；开启时缺失由业务层报参数错误。
+    guideline_coordinates: Optional[Tuple[float, float, float, float]] = Field(
+        default=None, description="引导框归一化坐标 x,y,w,h，如 '0.154,0.4075,0.692,0.336'；关闭 guideline 过滤时可省略"
     )
 
     @field_validator("line_order", mode="before")
