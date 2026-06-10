@@ -43,3 +43,16 @@ class TestRequestParamsValidation:
             guideline_coordinates="0.1,0.2,0.3,0.4",
         )
         assert mp2.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)
+
+
+class TestCompareKeyNormalization:
+    def test_zero_o_confusion_not_mismatch(self, api_instance):
+        """线标字体下 OCR 区分不了 O/0（TCU-DO1 常读成 TCU-D01），比对须归一"""
+        key = api_instance._compare_key
+        assert key("TCU-D01-2", "all") == key("TCU-DO1-2", "all")
+        assert key("TCU-reader-GND", "all") == key("TCU-Reader-GND", "all")
+
+    def test_front_back_rules_still_split_on_slash(self, api_instance):
+        key = api_instance._compare_key
+        assert key("QF2-1/PE1-J1", "front") == "qf2-1"
+        assert key("FU34-2/KM1-O1", "back") == "km1-01"
