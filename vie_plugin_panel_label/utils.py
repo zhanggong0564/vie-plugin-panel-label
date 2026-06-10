@@ -288,6 +288,40 @@ def Points_to_Mask(image_src, points, sort_by="y", return_maps=False):
     return mask_rois, sorted_idx
 
 
+def rotated_box_overlap(poly1, poly2) -> float:
+    """两多边形最小外接旋转矩形的交集面积 / 较小矩形面积（IoS），范围 [0,1]。
+
+    用 IoS 而非 IoU：同一线标的重复检测常是"全长框 + 半截框"，半截框几乎
+    完全落在全长框内，IoS 接近 1 而 IoU 只有长度占比；相邻倾斜线标的
+    旋转矩形几乎不相交，IoS 接近 0，区分度好。
+    """
+    r1 = cv2.boxPoints(cv2.minAreaRect(np.asarray(poly1, dtype=np.float32).reshape(-1, 2)))
+    r2 = cv2.boxPoints(cv2.minAreaRect(np.asarray(poly2, dtype=np.float32).reshape(-1, 2)))
+    inter, _ = cv2.intersectConvexConvex(r1, r2)
+    if inter <= 0:
+        return 0.0
+    smaller = min(cv2.contourArea(r1), cv2.contourArea(r2))
+    return float(inter / smaller) if smaller > 0 else 0.0
+
+
+def dedup_overlapping_polygons(polygons, scores, class_ids, overlap_thresh: float):
+    """同类实例间按旋转框 IoS 去重，保留高置信度者；返回升序的保留索引。
+
+    YOLO 轴对齐 NMS（宽松阈值）抑制不掉同一线标上的重复框，在此基于
+    mask 多边形做二次去重。overlap_thresh >= 1 时等效关闭。
+    """
+    order = sorted(range(len(polygons)), key=lambda i: scores[i], reverse=True)
+    keep = []
+    for i in order:
+        is_dup = any(
+            class_ids[i] == class_ids[j] and rotated_box_overlap(polygons[i], polygons[j]) > overlap_thresh
+            for j in keep
+        )
+        if not is_dup:
+            keep.append(i)
+    return sorted(keep)
+
+
 def rect_contains(rect, pt, include_border=True):
     x, y, w, h = rect
     px, py = pt

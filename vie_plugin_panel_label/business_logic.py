@@ -49,6 +49,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 cfg.text_det_box_thresh,
                 cfg.text_det_unclip_ratio,
                 cfg.text_det_input_shape,
+                dedup_overlap_thresh=cfg.dedup_overlap_thresh,
             )
         except Exception as e:
             vision_logger.error(f"initialize model failed, error: {e}")

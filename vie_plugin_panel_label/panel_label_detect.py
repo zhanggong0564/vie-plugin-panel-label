@@ -13,7 +13,7 @@ import numpy as np
 from schemas.data_base import DetectResult
 from paddleocr import TextDetection, TextLineOrientationClassification, TextRecognition
 from paddlex.inference.pipelines.components import CropByPolys
-from .utils import Points_to_Mask, map_roi_points_to_original
+from .utils import Points_to_Mask, dedup_overlapping_polygons, map_roi_points_to_original
 from .models import PanellabelItem
 
 import os
@@ -60,8 +60,11 @@ class OCRPipeline:
         text_det_box_thresh=0.4,
         text_det_unclip_ratio=2.0,
         text_det_input_shape=None,
+        dedup_overlap_thresh=0.6,
     ):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
+        # 同类实例旋转框 IoS 去重阈值（>=1 关闭），抑制同一线标的重复检测框
+        self.dedup_overlap_thresh = dedup_overlap_thresh
 
         # Stage 1: Text Detection（加载自训练导出的检测推理目录，model_name 从 inference.yml 解析）
         self.text_det_model = TextDetection(
@@ -94,7 +97,17 @@ class OCRPipeline:
     def infer(self, image) -> PanellabelItem:
         results = self.detect_model.infer(image)
         class_ids = np.array(results.class_ids)
+        scores = np.array(results.scores)
         mask_polygons = np.array(results.mask_polygons, dtype=object)
+        # 二次去重：同一线标的重复检测框（全长框+半截框）轴对齐 NMS 抑制不掉，
+        # 按 mask 旋转框 IoS 去重，避免 observed 数多于标准数误判 extra。
+        if len(class_ids) > 1:
+            keep = dedup_overlapping_polygons(mask_polygons, scores, class_ids, self.dedup_overlap_thresh)
+            if len(keep) < len(class_ids):
+                vision_logger.info(f"检测实例去重: {len(class_ids)} -> {len(keep)}")
+                class_ids = class_ids[keep]
+                scores = scores[keep]
+                mask_polygons = mask_polygons[keep]
         points_line = mask_polygons[class_ids == 0] if 0 in class_ids else []
         start = time.time()
         mask_rois, sorted_idxs, roi_transforms = Points_to_Mask(image, points_line, return_maps=True)
@@ -173,7 +186,7 @@ class OCRPipeline:
             for idx in ori_index
         ]
         roi_classes_ids = class_ids[ori_index]
-        confidences = [results.scores[idx] for idx in ori_index]
+        confidences = [scores[idx] for idx in ori_index]
         panel_label_item = PanellabelItem(
             Points=positions,
             index=ori_index,
