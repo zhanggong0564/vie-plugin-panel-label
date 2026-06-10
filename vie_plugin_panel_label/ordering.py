@@ -7,14 +7,17 @@
   - linear：中心点做 PCA 求排列主轴，沿主轴投影排序。方向约定：主轴偏竖直
     则朝下为正（上→下），偏水平则朝右为正（左→右）；单条线/斜排/单行单列通吃，零阈值。
   - columns:N：按横向显著间隙把中心聚成 N 列（左→右），列内沿竖直排（上→下）。
+  - rows:N：columns 的转置——按纵向显著间隙把中心聚成 N 行（上→下），行内沿水平排（左→右）。
+    EXIF 旋转会把"视觉上的左右两列"变成模型坐标系里的上下两行，此时该用 rows。
   - 方向修饰后缀（可叠加）：
-      :rev    整体反向（linear 反向；columns 等价于 colrev+rowrev）
-      :colrev 仅列序反向（右列先）       —— 仅 columns
-      :rowrev 仅列内反向（列内下→上）     —— 仅 columns
-    例：QF2 为"左列先 + 列内下→上" → "columns:2:rowrev"。
+      :rev    整体反向
+      :colrev columns 列序反向（右列先）；rows 行内反向（行内右→左）
+      :rowrev columns 列内反向（列内下→上）；rows 行序反向（下行先）
+    例：QF2 在模型坐标系是上下两行、上行先、行内左→右 → "rows:2"。
 
 模式串语法： "linear" | "linear:rev"
             | "columns:N" | "columns:N:rowrev" | "columns:N:colrev" | "columns:N:colrev:rowrev"
+            | "rows:N"    | "rows:N:rowrev"     | "rows:N:colrev"     | "rows:N:colrev:rowrev"
 '''
 
 from typing import List, Optional, Tuple
@@ -92,20 +95,61 @@ def _columns_order(centers: np.ndarray, ncol: int, colrev: bool = False, rowrev:
     return result
 
 
+def _rows_order(centers: np.ndarray, nrow: int, rowrev: bool = False, colrev: bool = False) -> List[int]:
+    """columns 的转置：按竖直显著间隙把中心聚成 nrow 行（上→下），行内沿水平排（左→右）。
+
+    rowrev=行序反向（下行先），colrev=行内反向（右→左）。x/y 与 _columns_order 完全互换。
+    """
+    n = len(centers)
+    if n <= 1 or nrow <= 1:
+        # 退化为单行：按水平排（colrev 时右→左）
+        row = list(np.argsort(centers[:, 0], kind="stable")) if n else []
+        return row[::-1] if colrev else row
+    # 按 y 升序，找 nrow-1 个最大竖直间隙作为行分界
+    order_y = list(np.argsort(centers[:, 1], kind="stable"))
+    ys = centers[order_y, 1]
+    gaps = np.diff(ys)
+    cut_set = set()
+    if len(gaps) >= nrow - 1:
+        cut_set = {int(i) for i in np.argsort(gaps)[-(nrow - 1):]}
+    # 切分成行（已按 y 升序，故行天然上→下）
+    rows: List[List[int]] = []
+    cur = [order_y[0]]
+    for i in range(1, len(order_y)):
+        if (i - 1) in cut_set:
+            rows.append(cur)
+            cur = []
+        cur.append(order_y[i])
+    rows.append(cur)
+    if rowrev:  # 行序反向：下行先
+        rows = rows[::-1]
+    # 行内按水平（x 升序，左→右；colrev 时右→左）
+    result: List[int] = []
+    for row in rows:
+        row_sorted = sorted(row, key=lambda idx: centers[idx, 0])
+        if colrev:
+            row_sorted = row_sorted[::-1]
+        result.extend(row_sorted)
+    return result
+
+
 def _parse_mode(sort_mode: str) -> Tuple[str, int, set]:
-    """解析模式串 → (mode, ncol, tokens)。tokens 含 rev/colrev/rowrev。非法值回退 linear。"""
+    """解析模式串 → (mode, count, tokens)。tokens 含 rev/colrev/rowrev。非法值回退 linear。
+
+    count 对 columns 即列数 ncol、对 rows 即行数 nrow。
+    """
     parts = (sort_mode or "linear").strip().split(":")
     mode = parts[0].lower() or "linear"
     tokens = {p.lower() for p in parts[1:]}
-    ncol = 1
-    if mode == "columns":
+    count = 1
+    if mode in ("columns", "rows"):
         for p in parts[1:]:
             if p.isdigit():
-                ncol = int(p)
+                count = int(p)
                 break
-    if mode not in ("linear", "columns"):
+    if mode not in ("linear", "columns", "rows"):
         mode = "linear"
-    return mode, ncol, tokens
+    return mode, count, tokens
 
 
 def compute_order(points, sort_mode: str = "linear") -> List[int]:
@@ -113,10 +157,14 @@ def compute_order(points, sort_mode: str = "linear") -> List[int]:
     centers = _centers(points)
     if len(centers) <= 1:
         return list(range(len(centers)))
-    mode, ncol, tokens = _parse_mode(sort_mode)
+    mode, count, tokens = _parse_mode(sort_mode)
     if mode == "columns":
         perm = _columns_order(
-            centers, ncol, colrev=("colrev" in tokens), rowrev=("rowrev" in tokens)
+            centers, count, colrev=("colrev" in tokens), rowrev=("rowrev" in tokens)
+        )
+    elif mode == "rows":
+        perm = _rows_order(
+            centers, count, rowrev=("rowrev" in tokens), colrev=("colrev" in tokens)
         )
     else:
         perm = _linear_order(centers)
