@@ -455,8 +455,9 @@ PRODUCT_guideline = {
 #   "linear"            单条线/单行/单列/斜排，PCA 主轴投影（偏竖直→上下，偏水平→左右）
 #   "linear:rev"        linear 整体反向
 #   "columns:N"         按 x 间隙分 N 列（左→右），列内上→下
-#   "columns:N:rowrev"  列内下→上（列序仍左→右），如 QF2
+#   "columns:N:rowrev"  列内下→上（列序仍左→右）
 #   "columns:N:colrev"  右列先
+#   "rows:N"            按 y 间隙分 N 行（上→下），行内左→右，如 QF2（EXIF 旋转后两束成上下两行）
 #
 # 未列出的型号用 DEFAULT_SORT_MODE（linear）——单行/单列/斜排/扇形(如 KVM)均适用。
 # 仅二维多列或方向反常的型号需在此登记。
@@ -464,8 +465,9 @@ PRODUCT_guideline = {
 DEFAULT_SORT_MODE = "linear"
 
 PRODUCT_SORT_MODE = {
-    # QF2：断路器两侧两束，左列先、列内从下往上
-    "QF2": "columns:2:rowrev",
+    # QF2：断路器两侧两束。原图带 EXIF 旋转，模型坐标系里两束是上下两行，
+    #      上行先、行内左→右即 standard 顺序（误设 columns:2:rowrev 会把每行劈两半错排）
+    "QF2": "rows:2",
     # D1：二维散布——左列(D1+/D1-) 再 中列(D1-1/D1-3)，列内上→下
     "D1": "columns:2",
 }
