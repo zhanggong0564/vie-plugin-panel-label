@@ -202,15 +202,15 @@ PRODUCT_TYPE = {
     # 充电桩型号 / Charging pile models
     "TCU": [
         "TCU-12V+",
-        "TCU-12V",
+        "TCU-12V-",
         "TCU-Reader-RX",
         "TCU-Reader-TX",
-        "TCU-reader-GND",
+        "TCU-Reader-GND",
         "TCU-Reader-5V",
         "TCU-DO1-2",
         "TCU-DO1-1",
         "TCU-DO2-2",
-        "TCU-D02-1",
+        "TCU-DO2-1",
     ],
     "PSU1": [
         "PSU1-2(V+)",
@@ -384,6 +384,9 @@ PRODUCT_SORT_MODE = {
     "QF2": "rows:2",
     # D1：二维散布——左列(D1+/D1-) 再 中列(D1-1/D1-3)，列内上→下
     "D1": "columns:2",
+    # TCU：顶部电源 2 根 + 底部 Reader/DO 8 根，y 上分两簇。linear 主轴近竖直，
+    #      顶部并排两根的先后会被标签悬挂高低差(十几 px)翻转，须按行排
+    "TCU": "rows:2",
 }
 
 
