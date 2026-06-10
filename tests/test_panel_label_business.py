@@ -31,3 +31,15 @@ class TestRequestParamsValidation:
             api_instance.business_post_process(ctx)
         assert "line_order" in exc_info.value.error_msg
         assert exc_info.value.context.get("scenario") == "panel_label"
+
+    def test_guideline_coordinates_optional_in_schema(self):
+        """关闭 guideline 过滤的部署下调用方可不传 guideline_coordinates"""
+        from vie_plugin_panel_label.schemas import ModelParams
+        mp = ModelParams(product_type="TK2", line_order="TK2-2,TK2-1")
+        assert mp.guideline_coordinates is None
+        mp2 = ModelParams(
+            product_type="TK2",
+            line_order="TK2-2,TK2-1",
+            guideline_coordinates="0.1,0.2,0.3,0.4",
+        )
+        assert mp2.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)

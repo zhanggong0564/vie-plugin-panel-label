@@ -197,6 +197,38 @@ class TestGuidelineFilter:
         assert len(filtered.Points) == 0
 
 
+class TestGuidelineFilterSwitch:
+    def test_judge_default_matches_config(self, judge):
+        """实例开关与配置默认一致（当前默认关闭）"""
+        from vie_plugin_panel_label.config import PanelLabelConfig
+        assert judge.enable_guideline_filter is PanelLabelConfig().enable_guideline_filter
+
+    def test_disabled_skips_filter_and_guideline_optional(self, judge):
+        """开关关闭时跳过 ROI 过滤：ROI 外的框照常参与判定，guideline 缺失也不报错"""
+        judge.enable_guideline_filter = False
+        results = PanellabelItem(
+            Points=[[950, 750, 990, 750, 990, 790, 950, 790]],  # 在默认 ROI 外
+            index=[0],
+            class_id=[0],
+            texts=["LINE1/xxx"],
+            confidence=[0.9],
+        )
+        ctx = _make_ctx(judge, results, ["LINE1/xxx"], None)
+        judge.business_post_process(ctx)
+        assert ctx.result.status is True
+        assert len(ctx.result.detailList) == 1
+
+    def test_enabled_missing_guideline_raises(self, judge, standard_result):
+        """开关开启时 guideline 仍为必要参数，缺失报参数错误"""
+        from schemas.exceptions import InvalidParamsError
+
+        judge.enable_guideline_filter = True
+        ctx = _make_ctx(judge, PanellabelItem(), standard_result, None)
+        with pytest.raises(InvalidParamsError) as exc_info:
+            judge.business_post_process(ctx)
+        assert "guideline_coordinates" in exc_info.value.error_msg
+
+
 def _make_ctx(judge, results, standard_result, guideline):
     """构造带 standard_result / guideline 透传袋的推理上下文。"""
     ctx = InferenceContext(
@@ -223,6 +255,7 @@ class TestBusinessLogicPostProcess:
             texts=["LINE1/xxx", "LINE2/yyy", "LINE3/zzz"],
             confidence=[0.95, 0.88, 0.72],
         )
+        judge.enable_guideline_filter = True
         ctx = _make_ctx(judge, results, standard_result, guideline)
         judge.business_post_process(ctx)
         mom = ctx.result
@@ -246,6 +279,7 @@ class TestBusinessLogicPostProcess:
             texts=["LINE1/xxx", "WRONG_DATA", "LINE3/zzz"],
             confidence=[0.95, 0.88, 0.72],
         )
+        judge.enable_guideline_filter = True
         ctx = _make_ctx(judge, results, standard_result, guideline)
         judge.business_post_process(ctx)
         mom = ctx.result
