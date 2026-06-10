@@ -9,11 +9,11 @@
 
 
 class PanelLabelConfig:
-    model_path = "./weights/panel_label/best_v3.onnx"
-    text_det_model_path = "./weights/panel_label/PP-OCRv5_mobile_det_panel_v1"
-    orient_model_path = "./weights/panel_label/PP-LCNet_x1_0_textline_ori_v3"
-    text_recognition_model_path = "./weights/panel_label/PP-OCRv5_server_rec_merged_v4_diff_lr"
-    confThreshold = 0.6
+    model_path = "./weights/panel_label/label_det_yolo_v3.onnx"
+    text_det_model_path = "./weights/panel_label/text_det_plane_ppocrv5m_v1"
+    orient_model_path = "./weights/panel_label/textline_ori_lcnet_v4"
+    text_recognition_model_path = "./weights/panel_label/text_rec_ppocrv5s_v4"
+    confThreshold = 0.7
     nmsThreshold = 0.8
     # TextDetection
 
