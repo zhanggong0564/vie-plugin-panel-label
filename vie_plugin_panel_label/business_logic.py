@@ -162,11 +162,13 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             return None
         parts = text.split("/", 1)
         if rule == "front":
-            return parts[0].lower()
+            key = parts[0]
         elif rule == "back":
-            return parts[-1].lower()
+            key = parts[-1]
         else:  # "all"
-            return text.lower()
+            key = text
+        # 线标字体下 OCR 区分不了字母 O 与数字 0（TCU-DO1 常读成 TCU-D01），统一归 0 比对
+        return key.lower().replace("o", "0")
 
     def analyze(self, observed_result: PanellabelItem, standard_result, rule: str = "all") -> PanelInfo:
         corrected_texts = [self._fix_slash_misrecognition(t) for t in observed_result.texts]
