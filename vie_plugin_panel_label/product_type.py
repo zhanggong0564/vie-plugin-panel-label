@@ -252,9 +252,9 @@ PRODUCT_TYPE = {
         "PL-J1-5",
     ],
     "KVM": [
-        "KVM-K2-4",
-        "KVM-K2-2",
         "KVM-K2-1",
+        "KVM-K2-2",
+        "KVM-K2-4",
     ],
     "CCU1": [
         # 图二：从下到上
