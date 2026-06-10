@@ -93,9 +93,9 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 product_type=ctx.product_type,
                 scenario="panel_label",
             )
-        # results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
+        results = self.guideline_filter(ctx.raw_result, norm_rect, ctx.w, ctx.h)
         # 按型号固定排序模式对线标重排（消除运行时猜布局/调阈值）。
-        ctx.raw_result = order_panel_item(ctx.raw_result, get_sort_mode(ctx.product_type))
+        ctx.raw_result = order_panel_item(results, get_sort_mode(ctx.product_type))
         panel_info = self.analyze(ctx.raw_result, standard_result, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
