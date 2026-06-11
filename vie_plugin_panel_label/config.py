@@ -51,7 +51,7 @@ class PanelLabelConfig:
     def __init__(self):
         # guideline 引导框 ROI 过滤开关：默认关闭，部署时设环境变量
         # PANEL_LABEL_GUIDELINE_FILTER=true 即可开启，无需改代码。
-        self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", False)
+        self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", True)
         # 检测实例去重阈值（旋转框交集/较小框面积）：同一线标的重复框（全长框+半截框）
         # 轴对齐 NMS 抑制不掉，超过该重叠度只保留高置信度者；设 >=1 关闭去重。
         self.dedup_overlap_thresh = _env_float("PANEL_LABEL_DEDUP_OVERLAP", 0.6)
