@@ -66,17 +66,11 @@ class OCRPipeline:
         # 同类实例旋转框 IoS 去重阈值（>=1 关闭），抑制同一线标的重复检测框
         self.dedup_overlap_thresh = dedup_overlap_thresh
 
-        # Stage 1: Text Detection（加载自训练导出的检测推理目录，model_name 从 inference.yml 解析）
-        self.text_det_model = TextDetection(
-            model_name=_resolve_model_name(text_det_model_path),
-            model_dir=text_det_model_path,
-            limit_side_len=text_det_limit_side_len,
-            limit_type=text_det_limit_type,
-            thresh=text_det_thresh,
-            box_thresh=text_det_box_thresh,
-            unclip_ratio=text_det_unclip_ratio,
-            input_shape=text_det_input_shape,
-        )
+        # ===== 直送对比分支（feat/direct-ocr）=====
+        # 跳过 DBNet 文本检测：mask2roi 展平后的 roi 本身即单行文本条，直接送 cls+rec。
+        # 保留 __init__ 签名不变（det 相关参数不再使用），business_logic/run.py 无需改动。
+        # 与 main（det 版）的差异仅此一处，切分支即对比。
+        self.text_det_model = None
 
         # Stage 2: Text Line Orientation
         self.text_orient_model = TextLineOrientationClassification(
@@ -115,34 +109,13 @@ class OCRPipeline:
         vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
 
-        # Stage 1: Text Detection on each mask_roi
-        # 每张 roi 只有一个文本行，检测出多个则为误检测，只保留面积最大的
-        all_dt_polys = []
-        roi_to_idx = []
-        text_det_map: dict = {}  # roi_idx -> 文本检测框（反映射回原图像素坐标，仅可视化用）
-        for i, roi in enumerate(mask_rois):
-            det_result = self.text_det_model.predict(roi)
-            dt_polys = det_result[0]["dt_polys"]
-            if len(dt_polys) == 0:
-                continue
-            areas = [cv2.contourArea(np.array(poly, dtype=np.float32).reshape(-1, 2)) for poly in dt_polys]
-            best_poly = dt_polys[int(np.argmax(areas))]
-            all_dt_polys.append([best_poly])
-            roi_to_idx.append(i)
-            text_det_map[i] = map_roi_points_to_original(roi_transforms[i], best_poly)
+        # Stage 1: 直送对比分支 —— 跳过文本检测，展平 roi 整条直接当待识别小图。
+        # det 版在此用 DBNet 裁紧文字区；本分支不裁，text_det_points 全空（仅影响可视化蓝框）。
+        all_crops = list(mask_rois)
+        crop_roi_map = list(range(len(mask_rois)))
+        text_det_map: dict = {}  # 直送无文本检测框，留空
         det_end = time.time()
-        vision_logger.debug(f"Text Detection: {det_end - start:.4f}秒")
-
-        # Crop detected text regions
-        all_crops = []
-        crop_roi_map = []
-        for i, dt_polys in enumerate(all_dt_polys):
-            roi_idx = roi_to_idx[i]
-            roi = mask_rois[roi_idx]
-            crops = list(self._crop_by_polys(roi, dt_polys))
-            if crops:
-                all_crops.append(crops[0])
-                crop_roi_map.append(roi_idx)
+        vision_logger.debug(f"Text Detection(direct, skipped): {det_end - start:.4f}秒")
 
         # Stage 2: Text Line Orientation
         text_map: dict = {}
