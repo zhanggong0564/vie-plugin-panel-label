@@ -41,7 +41,7 @@ def detect(detector, image, product_type, rule):
 
     与 BusinessLogicBase.detect 等价（单次推理），但额外暴露 ctx.raw_result：
         result = ctx.result      生产响应 MoMResult（坐标已归一化，等同 API 输出）
-        item   = ctx.raw_result  PanellabelItem（原图像素坐标，含 text_det_points 供可视化）
+        item   = ctx.raw_result  PanellabelItem（原图像素坐标，含 text_crops 供难例落盘）
 
     生产环境里标准顺序(standard_result)与引导框(guideline)随请求下发；示例为方便
     测试仍从本地 PRODUCT_TYPE / PRODUCT_guideline 词典读取并经 ctx.extra 注入。
@@ -54,7 +54,10 @@ def detect(detector, image, product_type, rule):
     ctx = detector.build_context(params)
     detector.preprocess_hook(ctx)
     ctx.raw_result = detector.detector.infer(ctx.image)
-    if standard_result is None or guideline is None:
+    # 对齐生产逻辑：guideline 仅在开启 ROI 过滤时才是必需项（默认关闭）；
+    # 否则只要有标准序列(standard_result)就照常判定，不因缺引导框而跳过。
+    needs_guideline = getattr(detector, "enable_guideline_filter", False)
+    if standard_result is None or (needs_guideline and guideline is None):
         return ctx.raw_result, None
     detector.business_post_process(ctx)
     if detector.should_normalize(ctx):
@@ -63,10 +66,30 @@ def detect(detector, image, product_type, rule):
     return ctx.raw_result, ctx.result
 
 
-def visualize(image, item, result, product_type):
-    """画 guideline 参考框（绿）+ 线标框（绿=通过 红=异常）+ 文本检测框（蓝）+ 识别文本。
+def draw_status_banner(image, result):
+    """左上角画整体判定横幅：PASS=绿底；多检/漏检/不符=红底并标出错误类型；未注册=灰底。
 
-    线标框/文本框均用 item 的原图像素坐标；状态与文本取自 result.detailList（与 item 逐项对齐）。
+    弥补 per-item 着色的盲区：型号多检(EXTRA)/漏检(MISSING)时数量对不齐、无法定位到具体框，
+    个别框可能仍为绿色，靠横幅给出整体结论。
+    """
+    if result is None:
+        text, color = "NO JUDGE", (128, 128, 128)
+    elif result.status:
+        text, color = "PASS", (0, 160, 0)
+    else:
+        text, color = f"FAIL: {(result.message or '').upper()}", (0, 0, 200)
+    font, scale, thick = cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3
+    (tw, th), base = cv2.getTextSize(text, font, scale, thick)
+    cv2.rectangle(image, (0, 0), (tw + 20, th + base + 20), color, -1)
+    cv2.putText(image, text, (10, th + 10), font, scale, (255, 255, 255), thick)
+    return image
+
+
+def visualize(image, item, result, product_type):
+    """画整体判定横幅 + guideline 参考框（绿）+ 线标框（绿=通过 红=异常）+ 识别文本。
+
+    线标框用 item 的原图像素坐标；状态与文本取自 result.detailList（与 item 逐项对齐）。
+    直送对比分支已移除 DBNet 文本检测，text_det_points 恒空，故不再画文本检测框（蓝）。
     """
     h, w = image.shape[:2]
     if product_type in PRODUCT_guideline:
@@ -84,16 +107,16 @@ def visualize(image, item, result, product_type):
             color = (0, 255, 0) if status else (0, 0, 255)
             cv2.polylines(image, [pts], True, color, 2)
             cv2.putText(image, name or "", (pts[0][0], pts[0][1]), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-        # 文本检测框（PaddleOCR Stage1，反映射回原图，蓝色）
-        tdp = item.text_det_points[i] if i < len(item.text_det_points) else None
-        if tdp is not None and len(tdp) >= 3:
-            tpts = np.array(tdp, np.int32).reshape(-1, 2)
-            cv2.polylines(image, [tpts], True, (255, 0, 0), 2)
+    draw_status_banner(image, result)
     return image
 
 
 def save_rec_hard_samples(out_dir, src_stem, item, result, product_type):
     """把识别错误的文本行按 PPOCR rec 格式落盘，返回保存条数。
+
+    直送对比分支已移除 DBNet 文本检测：item.text_crops[i] 现为整条线标 ROI
+    （展平后直送识别模型的 rotated_crop），而非旧版 DBNet 裁紧的文本框小图——
+    落盘的即识别模型实际输入，标签仍取 standard[i]，可直接用于 rec 难例回流。
 
     仅当 result.message=='mismatch'（observed 与 standard 数量对齐）时处理：
     对 status=False 的第 i 行，把 item.text_crops[i] 写到
