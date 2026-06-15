@@ -30,10 +30,10 @@ def _env_float(name: str, default: float) -> float:
 
 
 class PanelLabelConfig:
-    model_path = "./weights/panel_label/label_det_yolo_v3.onnx"
+    model_path = "./weights/panel_label/v2/best.onnx"
     text_det_model_path = "./weights/panel_label/text_det_plane_ppocrv5m_v1"
-    orient_model_path = "./weights/panel_label/textline_ori_lcnet_v4"
-    text_recognition_model_path = "./weights/panel_label/text_rec_ppocrv5s_v4"
+    orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v1"
+    text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v5_diff_lr"
     confThreshold = 0.7
     nmsThreshold = 0.8
     # TextDetection
