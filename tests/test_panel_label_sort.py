@@ -133,6 +133,39 @@ def test_d1_columns_top_to_bottom():
     assert _order_names(d1, get_sort_mode("D1")) == ["D1+", "D1-", "D1-1", "D1-3"]
 
 
+def test_sw3_rows_two_by_two_real_coords():
+    """SW3：圆形接线座 4 根线呈 2×2 扇形，rows:2 —— 上排左→右(SW3-3,SW3-4) 再下排左→右(SW3-2,SW3-1)。
+
+    坐标取自真实推理（temp_zhongya/SW3）。竖直跨度 > 水平跨度，历史默认 linear 的 PCA 主轴
+    判成偏竖直 → 按上下乱排（全量 36/36 FAIL）；故登记 rows:2。两组分别覆盖列分明、
+    以及 x 近似均匀（列分界靠 y 才稳）的刁钻布局。
+    """
+    assert get_sort_mode("SW3") == "rows:2"
+    # 组 A：列分明（左列 x≈1479-1525，右列 x≈1680-1775）
+    a = [("SW3-4", 1680, 2514), ("SW3-3", 1525, 2589), ("SW3-1", 1775, 2959), ("SW3-2", 1479, 2916)]
+    random.seed(11)
+    random.shuffle(a)
+    assert _order_names(a, get_sort_mode("SW3")) == _pt.PRODUCT_TYPE["SW3"]
+    assert _pt.PRODUCT_TYPE["SW3"] == ["SW3-3", "SW3-4", "SW3-2", "SW3-1"]
+    # 组 B：x 近似均匀（1439/1557/1672/1676），纯按 x 会把右上/右下互换；按 y 分行才稳
+    b = [("SW3-2", 1439, 2276), ("SW3-3", 1557, 2010), ("SW3-1", 1672, 2263), ("SW3-4", 1676, 2008)]
+    random.seed(12)
+    random.shuffle(b)
+    assert _order_names(b, get_sort_mode("SW3")) == _pt.PRODUCT_TYPE["SW3"]
+    # 回归锁定：默认 linear 在该 2×2 布局下会错排（这是登记 rows:2 的原因）
+    assert _order_names(b, "linear") != _pt.PRODUCT_TYPE["SW3"]
+
+
+def test_sw4_rows_two_by_two_real_coords():
+    """SW4：与 SW3 同构的 2×2 扇形，rows:2 —— 上排(SW4-3,SW4-4) 再下排(SW4-2,SW4-1)。坐标取自真实推理。"""
+    assert get_sort_mode("SW4") == "rows:2"
+    pts = [("SW4-2", 1280, 2723), ("SW4-3", 1320, 2379), ("SW4-4", 1450, 2400), ("SW4-1", 1526, 2700)]
+    random.seed(13)
+    random.shuffle(pts)
+    assert _order_names(pts, get_sort_mode("SW4")) == _pt.PRODUCT_TYPE["SW4"]
+    assert _pt.PRODUCT_TYPE["SW4"] == ["SW4-3", "SW4-4", "SW4-2", "SW4-1"]
+
+
 def test_columns_colrev_right_first():
     """columns:2:colrev —— 右列先、列内上→下。"""
     items = [(f"{c}{y}", x, y) for c, x in [("L", 100), ("R", 400)] for y in (100, 200, 300)]
