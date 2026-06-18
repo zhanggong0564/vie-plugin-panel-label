@@ -32,8 +32,8 @@ def _env_float(name: str, default: float) -> float:
 class PanelLabelConfig:
     model_path = "./weights/panel_label/v2/best.onnx"
     text_det_model_path = "./weights/panel_label/text_det_plane_ppocrv5m_v1"
-    orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v1"
-    text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v5_diff_lr"
+    orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v2"
+    text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr"
     confThreshold = 0.7
     nmsThreshold = 0.8
     # TextDetection
@@ -46,7 +46,7 @@ class PanelLabelConfig:
     text_det_input_shape = [3, 160, 1248]
     # TextRecognition
     text_rec_score_thresh = 0.7
-    text_rec_input_shape = [3, 48, 320]
+    text_rec_input_shape = None
 
     def __init__(self):
         # guideline 引导框 ROI 过滤开关：默认关闭，部署时设环境变量
