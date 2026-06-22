@@ -12,6 +12,13 @@ dist/
 .coverage
 htmlcov/
 
+# 运行日志与复核工具生成状态
+logs/
+examples/orient_review/candidates.json
+examples/orient_review/review_state.json
+examples/orient_review/scan_status.json
+examples/orient_review/*.err
+
 # 编辑器/环境
 .vscode/
 .idea/
