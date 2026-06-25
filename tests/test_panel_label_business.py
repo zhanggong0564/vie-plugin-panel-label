@@ -1,6 +1,4 @@
 """panel_label 业务逻辑单元测试"""
-import sys
-import types
 import numpy as np
 import pytest
 from unittest.mock import patch
@@ -9,22 +7,8 @@ from schemas.inference_context import InferenceContext
 
 
 @pytest.fixture
-def api_instance(monkeypatch):
+def api_instance():
     """绕过 OCRPipeline 加载，构造 PanelLabelJudgeApi 实例"""
-    paddleocr = types.ModuleType("paddleocr")
-    paddleocr.TextDetection = object
-    paddleocr.TextLineOrientationClassification = object
-    paddleocr.TextRecognition = object
-    paddlex = types.ModuleType("paddlex")
-    paddlex_inference = types.ModuleType("paddlex.inference")
-    paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
-    paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
-    paddlex_components.CropByPolys = object
-    monkeypatch.setitem(sys.modules, "paddleocr", paddleocr)
-    monkeypatch.setitem(sys.modules, "paddlex", paddlex)
-    monkeypatch.setitem(sys.modules, "paddlex.inference", paddlex_inference)
-    monkeypatch.setitem(sys.modules, "paddlex.inference.pipelines", paddlex_pipelines)
-    monkeypatch.setitem(sys.modules, "paddlex.inference.pipelines.components", paddlex_components)
     with patch("vie_plugin_panel_label.business_logic.OCRPipeline"):
         from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
         from config import settings
@@ -72,26 +56,3 @@ class TestCompareKeyNormalization:
         key = api_instance._compare_key
         assert key("QF2-1/PE1-J1", "front") == "qf2-1"
         assert key("FU34-2/KM1-O1", "back") == "km1-01"
-
-
-class TestDetailNameFallback:
-    def test_unrecognized_ocr_text_does_not_emit_none_name(self, api_instance):
-        from vie_plugin_panel_label.models import PanellabelItem
-
-        raw = PanellabelItem(
-            Points=[[0, 0, 10, 0, 10, 10, 0, 10]],
-            index=[0],
-            class_id=[0],
-            texts=[None],
-            confidence=[0.8],
-        )
-        ctx = _make_ctx(
-            raw,
-            "TK2",
-            extra={"standard_result": ["TK2-1"], "guideline": (0.0, 0.0, 1.0, 1.0)},
-        )
-
-        api_instance.business_post_process(ctx)
-
-        assert ctx.result.detailList[0].name == ""
-        assert isinstance(ctx.result.detailList[0].name, str)

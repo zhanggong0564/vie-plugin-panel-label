@@ -111,51 +111,16 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
-        observed_count = len(panel_info.observed_result)
-        standard_count = len(standard_result)
-        if observed_count != standard_count:
-            vision_logger.warning(
-                "panel_label line_order count mismatch, product_type={}, observed_count={}, standard_count={}, "
-                "standard_result={}, observed_result={}",
-                ctx.product_type,
-                observed_count,
-                standard_count,
-                standard_result,
-                panel_info.observed_result,
-            )
         data_list = []
         for i, observed_item in enumerate(panel_info.observed_result):
             status = panel_info.result or i not in panel_info.error_indexs
-            item_name = observed_item
-            if item_name is None:
-                expected_name = standard_result[i] if i < len(standard_result) else None
-                vision_logger.warning(
-                    "panel_label observed text is None, fallback detailList.name to empty string, "
-                    "product_type={}, idx={}, expected_name={}, coordinate={}, confidence={}",
-                    ctx.product_type,
-                    i,
-                    expected_name,
-                    panel_info.observed_result_points[i] if i < len(panel_info.observed_result_points) else None,
-                    panel_info.confidence[i] if i < len(panel_info.confidence) else None,
-                )
-                item_name = ""
-            elif not isinstance(item_name, str):
-                vision_logger.warning(
-                    "panel_label observed text is not str, convert detailList.name to string, "
-                    "product_type={}, idx={}, name_type={}, name={}",
-                    ctx.product_type,
-                    i,
-                    type(item_name).__name__,
-                    item_name,
-                )
-                item_name = str(item_name)
             data_list.append(
                 DetectionItem(
                     status=status,
                     scene=self.class_name[panel_info.class_id[i]],
                     coordinate=panel_info.observed_result_points[i],
                     accuracy=panel_info.confidence[i],
-                    name=item_name,
+                    name=observed_item,
                 )
             )
         mom_result.detailList = data_list
