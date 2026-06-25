@@ -44,6 +44,11 @@ class PanelLabelConfig:
     text_det_box_thresh = 0.3
     text_det_unclip_ratio = 2
     text_det_input_shape = [3, 160, 1248]
+    # TextLineOrientation 文本行方向分类
+    # 仅当 top-1 置信度 >= 该阈值才直接采信模型方向；低于该阈值则正反两个朝向
+    # 都送识别，取 rec_score 高者（用识别置信度仲裁方向，比赌分类器稳）。
+    # 设 0.5 即全信分类器(关闭仲裁)，设 1.0 即全部样本都双向识别。
+    text_orient_score_thresh = 0.9
     # TextRecognition
     text_rec_score_thresh = 0.7
     text_rec_input_shape = None
