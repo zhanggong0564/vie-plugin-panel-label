@@ -41,6 +41,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 cfg.confThreshold,
                 cfg.nmsThreshold,
                 cfg.text_rec_score_thresh,
+                cfg.text_orient_score_thresh,
                 cfg.text_rec_input_shape,
                 cfg.text_det_model_path,
                 cfg.text_det_limit_side_len,

@@ -52,6 +52,7 @@ class OCRPipeline:
         confThreshold=0.5,
         nmsThreshold=0.5,
         text_rec_score_thresh=0.7,
+        text_orient_score_thresh=0.7,
         text_rec_input_shape=None,
         text_det_model_path=None,
         text_det_limit_side_len=128,
@@ -86,6 +87,8 @@ class OCRPipeline:
         )
 
         self.text_rec_score_thresh = text_rec_score_thresh
+        # 文本行方向：仅当 180°置信度 >= 该阈值才翻转，否则保持正向，抑制误翻
+        self.text_orient_score_thresh = text_orient_score_thresh
         self._crop_by_polys = CropByPolys(det_box_type="quad")
 
     def infer(self, image) -> PanellabelItem:
@@ -122,15 +125,34 @@ class OCRPipeline:
         crop_map: dict = {}  # roi_idx -> rotated_crop（识别模型输入小图，供数据回流落盘）
         if all_crops:
             orient_results = self.text_orient_model.predict(all_crops)
-            angles = [int(r["class_ids"][0]) for r in orient_results]
+            # 高置信(>=阈值)直接采信分类器方向；低置信项标记待识别仲裁。
+            angles, uncertain = [], []
+            for i, r in enumerate(orient_results):
+                cls = int(r["class_ids"][0])
+                score = float(r["scores"][0])
+                angles.append(cls)
+                if score < self.text_orient_score_thresh:
+                    uncertain.append(i)
             orient_end = time.time()
-            vision_logger.debug(f"Text Orientation: {orient_end - det_end:.4f}秒")
+            vision_logger.debug(
+                f"Text Orientation: {orient_end - det_end:.4f}秒, 低置信仲裁项 {len(uncertain)}/{len(all_crops)}"
+            )
 
             # Stage 3: Rotate + Text Recognition
             rotated_crops = [
                 cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop for crop, angle in zip(all_crops, angles)
             ]
             rec_results = self.text_rec_model.predict(rotated_crops)
+
+            # 方向仲裁：低置信项把当前朝向再翻 180° 识别一遍，rec_score 高者胜出。
+            # 用识别置信度判定方向，纠正方向分类器在不确定样本上的漏翻/误翻。
+            if uncertain:
+                flipped = [cv2.rotate(rotated_crops[i], cv2.ROTATE_180) for i in uncertain]
+                flipped_rec = self.text_rec_model.predict(flipped)
+                for k, i in enumerate(uncertain):
+                    if float(flipped_rec[k]["rec_score"]) > float(rec_results[i]["rec_score"]):
+                        rotated_crops[i] = flipped[k]
+                        rec_results[i] = flipped_rec[k]
             rec_end = time.time()
             vision_logger.debug(f"Text Recognition: {rec_end - orient_end:.4f}秒")
 
