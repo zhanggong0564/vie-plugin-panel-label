@@ -104,12 +104,7 @@ class OCRPipeline:
                 mask_polygons = mask_polygons[keep]
         points_line = mask_polygons[class_ids == 0] if 0 in class_ids else []
         start = time.time()
-        points_to_mask_result = Points_to_Mask(image, points_line, return_maps=True)
-        if len(points_to_mask_result) == 3:
-            mask_rois, sorted_idxs, roi_transforms = points_to_mask_result
-        else:
-            mask_rois, sorted_idxs = points_to_mask_result
-            roi_transforms = []
+        mask_rois, sorted_idxs, roi_transforms = Points_to_Mask(image, points_line, return_maps=True)
         end = time.time()
         vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
