@@ -74,6 +74,73 @@ class TestCompareKeyNormalization:
         assert key("FU34-2/KM1-O1", "back") == "km1-01"
 
 
+class TestOCRPipelineCompatibility:
+    def test_infer_accepts_legacy_two_value_points_to_mask(self, monkeypatch):
+        """兼容旧版 Points_to_Mask(return_maps=True) 仍只返回 roi 和排序索引。"""
+        import sys
+        import types
+
+        paddleocr = types.ModuleType("paddleocr")
+        paddleocr.TextDetection = object
+        paddleocr.TextLineOrientationClassification = object
+        paddleocr.TextRecognition = object
+        paddlex = types.ModuleType("paddlex")
+        paddlex_inference = types.ModuleType("paddlex.inference")
+        paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
+        paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
+        paddlex_components.CropByPolys = object
+        monkeypatch.setitem(sys.modules, "paddleocr", paddleocr)
+        monkeypatch.setitem(sys.modules, "paddlex", paddlex)
+        monkeypatch.setitem(sys.modules, "paddlex.inference", paddlex_inference)
+        monkeypatch.setitem(sys.modules, "paddlex.inference.pipelines", paddlex_pipelines)
+        monkeypatch.setitem(sys.modules, "paddlex.inference.pipelines.components", paddlex_components)
+
+        from vie_plugin_panel_label import panel_label_detect as detect_mod
+        from vie_plugin_panel_label.panel_label_detect import OCRPipeline
+        from schemas.data_base import DetectResult
+
+        image = np.zeros((20, 20, 3), dtype=np.uint8)
+        polygon = [[0, 0], [10, 0], [10, 10], [0, 10]]
+        pipeline = OCRPipeline.__new__(OCRPipeline)
+        pipeline.dedup_overlap_thresh = 1.0
+        pipeline.detect_model = type(
+            "Detect",
+            (),
+            {
+                "infer": lambda self, img: DetectResult(
+                    boxes=[[0, 0, 10, 10]],
+                    scores=[0.9],
+                    class_ids=[0],
+                    class_names=["line"],
+                    mask_polygons=[polygon],
+                )
+            },
+        )()
+        pipeline.text_orient_model = type(
+            "Orient",
+            (),
+            {"predict": lambda self, crops: [{"class_ids": [0]} for _ in crops]},
+        )()
+        pipeline.text_rec_model = type(
+            "Rec",
+            (),
+            {"predict": lambda self, crops: [{"rec_text": "TK2-1", "rec_score": 0.95} for _ in crops]},
+        )()
+        pipeline.text_rec_score_thresh = 0.7
+
+        monkeypatch.setattr(
+            detect_mod,
+            "Points_to_Mask",
+            lambda img, pts, return_maps=False: ([image], np.array([0], dtype=np.int64)),
+        )
+
+        result = pipeline.infer(image)
+
+        assert result.texts == ["TK2-1"]
+        assert len(result.Points) == 1
+        assert len(result.Points[0]) == 8
+
+
 class TestDetailNameFallback:
     def test_unrecognized_ocr_text_does_not_emit_none_name(self, api_instance):
         from vie_plugin_panel_label.models import PanellabelItem
