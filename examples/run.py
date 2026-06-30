@@ -93,8 +93,14 @@ def visualize(image, item, result, product_type):
     """
     h, w = image.shape[:2]
     if product_type in PRODUCT_guideline:
-        gx, gy, gw, gh = PRODUCT_guideline[product_type]
-        cv2.rectangle(image, (int(gx * w), int(gy * h)), (int((gx + gw) * w), int((gy + gh) * h)), (0, 255, 0), 2)
+        g = PRODUCT_guideline[product_type]
+        if len(g) == 8:
+            # 8 值四边形：顺时针四角，归一化 → 像素后闭合绘制
+            gpts = np.array([[int(g[j] * w), int(g[j + 1] * h)] for j in range(0, 8, 2)], np.int32)
+            cv2.polylines(image, [gpts], True, (0, 255, 0), 2)
+        else:
+            gx, gy, gw, gh = g
+            cv2.rectangle(image, (int(gx * w), int(gy * h)), (int((gx + gw) * w), int((gy + gh) * h)), (0, 255, 0), 2)
 
     details = result.detailList if result is not None else []
 
