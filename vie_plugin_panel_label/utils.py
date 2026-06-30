@@ -329,3 +329,17 @@ def rect_contains(rect, pt, include_border=True):
         return (x <= px <= x + w) and (y <= py <= y + h)
     else:
         return (x < px < x + w) and (y < py < y + h)
+
+
+def polygon_contains(poly_pts, pt, include_border=True):
+    """点 pt 是否落在四边形 poly_pts 内（顺时针四角，像素坐标）。
+
+    poly_pts 接受扁平 [x1,y1,...,x4,y4] 或 [(x,y),...]；用 cv2.pointPolygonTest
+    判含：返回 +1 内、0 边界、-1 外。include_border 控制边界点是否计入，
+    与 rect_contains 的 include_border 语义对称。
+    """
+    poly = np.asarray(poly_pts, dtype=np.float32).reshape(-1, 2)
+    dist = cv2.pointPolygonTest(poly, (float(pt[0]), float(pt[1])), False)
+    if include_border:
+        return dist >= 0
+    return dist > 0
