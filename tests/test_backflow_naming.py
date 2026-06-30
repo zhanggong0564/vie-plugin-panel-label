@@ -1,12 +1,16 @@
 """线标数据回流命名规则单元测试
 
-线标专属的文件名解析（AI- 前缀剥离、型号图片序号去除、中文场景/型号/时间戳切分）
-随框架插件化下沉到本插件 Router；框架基类只保留场景无关的默认落盘命名。
+线标专属落盘命名随框架插件化下沉到本插件 Router：
+  - 场景目录 = 原始文件名按 '-' 分割的第一段
+  - 型号目录 = 请求 product_type，空则取 AICameraModel.AIParameterValue，仍空回退 _unknown_model
+  - 落盘文件名 = 原始文件名（去扩展名）
+框架基类只保留场景无关的默认落盘命名。
 """
 import pytest
 
 from routers.base_router import UNKNOWN_MODEL_DIR
 from vie_plugin_panel_label.plugin import PanelLabelRouter
+from vie_plugin_panel_label.schemas import PanelLabelRequest
 
 
 @pytest.fixture
@@ -21,50 +25,56 @@ def router():
 
 
 @pytest.mark.parametrize(
-    "filename, expected",
+    "filename, expected_scene, expected_stem",
     [
-        # AI- 前缀剥掉、型号序号 -1 去掉
-        ("AI-中压线标检验TK2-1-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
-        # 无 AI- 前缀，效果一致
-        ("中压线标检验TK2-1-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
-        # 旧式：型号尾部非数字（-A）不应被当序号去掉
-        ("1+X线标检验PE1-A-1779526099406.jpg", ("1+X线标检验", "PE1-A", "1779526099406")),
-        # 型号本身无序号后缀
-        ("中压线标检验TK2-1764780181920.jpg", ("中压线标检验", "TK2", "1764780181920")),
-        # AI- 大小写不敏感
-        ("ai-中压线标检验TK2-2-1764780181920.png", ("中压线标检验", "TK2", "1764780181920")),
+        # 顶层场景取 '-' 首段，文件名保留原名去扩展名
+        ("AI-集中式-1764780181920.jpg", "AI", "AI-集中式-1764780181920"),
+        ("集中式-中压线标检验-1764780181920.png", "集中式", "集中式-中压线标检验-1764780181920"),
+        # 无 '-' 时整名即首段
+        ("纯中文.jpg", "纯中文", "纯中文"),
     ],
 )
-def test_parse_filename(filename, expected):
-    """文件名解析：AI- 前缀剥离、型号图片序号去除、场景/型号/时间戳切分。"""
-    assert PanelLabelRouter._parse_filename(filename) == expected
-
-
-@pytest.mark.parametrize("filename", ["random.jpg", "noscene-123.jpg", "纯中文.jpg"])
-def test_parse_filename_unparseable(filename):
-    """不符合规则的文件名返回三元 None，由调用方走兜底。"""
-    assert PanelLabelRouter._parse_filename(filename) == (None, None, None)
-
-
-def test_resolve_target_uses_parsed_scene_and_model(router):
-    """解析成功：场景目录取中文场景名、型号目录取聚合型号、文件名用时间戳。"""
-    target = router.resolve_backflow_target(
-        "AI-中压线标检验TK2-1-1764780181920.jpg", fallback_product_type="ignored"
-    )
-    assert target.scene_dir == "中压线标检验"
+def test_resolve_target_scene_and_stem(router, filename, expected_scene, expected_stem):
+    """场景目录取首段、文件名保留原名（型号由 product_type 决定）。"""
+    target = router.resolve_backflow_target(filename, fallback_product_type="TK2")
+    assert target.scene_dir == expected_scene
+    assert target.save_stem == expected_stem
     assert target.model_dir == "TK2"
-    assert target.save_stem == "1764780181920"
 
 
-def test_resolve_target_falls_back_to_framework_default(router):
-    """文件名不可解析时回退框架默认：场景=detector_type，型号取 product_type 兜底。"""
-    target = router.resolve_backflow_target("random.jpg", fallback_product_type="FU211")
-    assert target.scene_dir == "panel_label"
-    assert target.model_dir == "FU211"
-    assert target.save_stem == "random"
-
-
-def test_resolve_target_fallback_unknown_model(router):
-    """既不可解析又无 product_type 时型号目录回退 _unknown_model。"""
-    target = router.resolve_backflow_target("random.jpg", fallback_product_type=None)
+def test_resolve_target_model_unknown_when_no_product_type(router):
+    """既无 product_type 兜底时型号目录回退 _unknown_model。"""
+    target = router.resolve_backflow_target("AI-集中式-123.jpg", fallback_product_type=None)
     assert target.model_dir == UNKNOWN_MODEL_DIR
+
+
+def _make_request(product_type="", ai_param_value=None):
+    payload = {
+        "product": "p",
+        "type": "t",
+        "modelParams": {"product_type": product_type, "line_order": "TK2-1,TK2-2"},
+    }
+    if ai_param_value is not None:
+        payload["AICameraModel"] = [
+            {"AIParameterValue": "", "Id": "1"},
+            {"AIParameterValue": ai_param_value, "Id": "2"},
+        ]
+    return PanelLabelRequest(**payload)
+
+
+def test_extract_product_type_prefers_product_type():
+    """product_type 非空时直接用之。"""
+    req = _make_request(product_type="QF2", ai_param_value="SHOULD_NOT_USE")
+    assert PanelLabelRouter._extract_product_type(req) == "QF2"
+
+
+def test_extract_product_type_falls_back_to_ai_parameter_value():
+    """product_type 为空字符时取首个非空 AIParameterValue（AICameraModel 经 extra 透传）。"""
+    req = _make_request(product_type="", ai_param_value="ABB-100")
+    assert PanelLabelRouter._extract_product_type(req) == "ABB-100"
+
+
+def test_extract_product_type_none_when_both_missing():
+    """product_type 空且无 AICameraModel 时返回 None，交框架回退 _unknown_model。"""
+    req = _make_request(product_type="")
+    assert PanelLabelRouter._extract_product_type(req) is None
