@@ -196,6 +196,54 @@ class TestGuidelineFilter:
         filtered = judge.guideline_filter(results, guideline, judge.w, judge.h)
         assert len(filtered.Points) == 0
 
+    def test_polygon_points_inside_kept(self, judge):
+        """8 值四边形：角点全在内 → 保留"""
+        judge.w = 1000
+        judge.h = 800
+        # 归一化四角（顺时针）：左上(0.1,0.1) 右上(0.9,0.1) 右下(0.9,0.9) 左下(0.1,0.9)
+        poly = (0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9)
+        results = PanellabelItem(
+            Points=[[200, 200, 300, 200, 300, 300, 200, 300]],  # 全在四边形内
+            index=[0],
+            class_id=[0],
+            texts=["KEEP"],
+            confidence=[0.9],
+        )
+        filtered = judge.guideline_filter(results, poly, judge.w, judge.h)
+        assert len(filtered.Points) == 1
+        assert filtered.texts == ["KEEP"]
+
+    def test_polygon_points_outside_excluded(self, judge):
+        """8 值四边形：有角点在外 → 剔除"""
+        judge.w = 1000
+        judge.h = 800
+        poly = (0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9)
+        results = PanellabelItem(
+            Points=[[950, 750, 990, 750, 990, 790, 950, 790]],  # 在四边形外
+            index=[0],
+            class_id=[0],
+            texts=["DISCARD"],
+            confidence=[0.9],
+        )
+        filtered = judge.guideline_filter(results, poly, judge.w, judge.h)
+        assert len(filtered.Points) == 0
+
+    def test_polygon_partial_outside_excluded(self, judge):
+        """8 值四边形：部分角点越界即整框剔除（与矩形 all-inside 语义一致）"""
+        judge.w = 1000
+        judge.h = 800
+        # 窄四边形，右边界约 x=300
+        poly = (0.1, 0.1, 0.3, 0.1, 0.3, 0.9, 0.1, 0.9)
+        results = PanellabelItem(
+            Points=[[200, 200, 400, 200, 400, 300, 200, 300]],  # 右两角 x=400 越界
+            index=[0],
+            class_id=[0],
+            texts=["DISCARD"],
+            confidence=[0.9],
+        )
+        filtered = judge.guideline_filter(results, poly, judge.w, judge.h)
+        assert len(filtered.Points) == 0
+
 
 class TestGuidelineFilterSwitch:
     def test_judge_default_matches_config(self, judge):

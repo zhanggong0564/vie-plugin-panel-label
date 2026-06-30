@@ -15,7 +15,7 @@ from schemas.exceptions import InvalidParamsError, ModelInferenceError
 from services.api import detection_factory
 from services.base import BusinessLogicBase
 from utils import vision_logger
-from .utils import rect_contains
+from .utils import rect_contains, polygon_contains
 from .ordering import order_panel_item
 from .product_type import get_sort_mode
 
@@ -61,19 +61,30 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             )
 
     def guideline_filter(self, results: PanellabelItem, norm_rect, img_w: int, img_h: int):
-        x_norm, y_norm, w_norm, h_norm = norm_rect
-        rect = (int(x_norm * img_w), int(y_norm * img_h), int(w_norm * img_w), int(h_norm * img_h))
+        # 按下发值长度区分引导区域：4 值=轴对齐矩形（旧），8 值=四边形（新）。
         boxes = results.Points
-        keep_indices = []
-        for i, box in enumerate(boxes):
-            all_points_inside = True
-            for j in range(0, len(box), 2):
-                px, py = box[j], box[j + 1]
-                if not rect_contains(rect, (px, py)):
-                    all_points_inside = False
-                    break
-            if all_points_inside:
-                keep_indices.append(i)
+        if len(norm_rect) == 8:
+            poly = [
+                norm_rect[i] * (img_w if i % 2 == 0 else img_h)
+                for i in range(8)
+            ]
+            keep_indices = [
+                i for i, box in enumerate(boxes)
+                if all(
+                    polygon_contains(poly, (box[j], box[j + 1]))
+                    for j in range(0, len(box), 2)
+                )
+            ]
+        else:
+            x_norm, y_norm, w_norm, h_norm = norm_rect
+            rect = (int(x_norm * img_w), int(y_norm * img_h), int(w_norm * img_w), int(h_norm * img_h))
+            keep_indices = [
+                i for i, box in enumerate(boxes)
+                if all(
+                    rect_contains(rect, (box[j], box[j + 1]))
+                    for j in range(0, len(box), 2)
+                )
+            ]
         filtered_results = PanellabelItem(
             Points=[results.Points[i] for i in keep_indices],
             index=[results.index[i] for i in keep_indices],
