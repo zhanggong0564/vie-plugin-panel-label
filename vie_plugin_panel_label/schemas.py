@@ -7,7 +7,7 @@
 @Description  :
 '''
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Dict, Optional, Tuple, Literal  # 新增Optional
 from schemas.common import GuideLineItem, ExampleImageItem
 
@@ -47,6 +47,10 @@ class ModelParams(BaseModel):
 
 class PanelLabelRequest(BaseModel):
     """请求中json_data对应的结构化模型"""
+
+    # 允许透传未声明字段（如数据回流型号兜底用到的 AICameraModel 列表），
+    # 不为其新增强类型字段，由 Router._extract_product_type 宽松读取。
+    model_config = ConfigDict(extra="allow")
 
     product: str = Field(..., description="产品类型")
     type: str = Field(..., description="物料号")
