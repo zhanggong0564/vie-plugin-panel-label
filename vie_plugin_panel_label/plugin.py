@@ -7,24 +7,15 @@
 @Description  : 线标检测接口
 '''
 
-import re
-from pathlib import Path
-from typing import Optional, Tuple
+import os
+from typing import Any, Optional
 
 import numpy as np
 
-from routers.base_router import BaseRouter, BackflowTarget
+from routers.base_router import BaseRouter, BackflowTarget, UNKNOWN_MODEL_DIR
 from schemas.data_base import InputParamsBusiness
 from .schemas import PanelLabelRequest
 from . import business_logic  # noqa: F401  导入即触发 @detection_factory.register("panel_label")
-
-# 线标文件名形如 "AI-中压线标检验TK2-1-1764780181920.jpg" / "1+X线标检验PE1-A-1779526099406.jpg":
-#   - 可选前缀 "AI-"（上游 AI 处理标记），先剥掉再解析
-#   - 末段 -<digits> 是 timestamp，去掉扩展名后用贪婪匹配切出
-#   - 型号尾部的 -<digits> 是单面多拍的图片序号（如 TK2-1 的 -1），按型号聚合需去掉
-_FILENAME_TS_RE = re.compile(r"^(.+)-(\d+)$")
-_AI_PREFIX_RE = re.compile(r"^AI-", re.IGNORECASE)
-_MODEL_INDEX_SUFFIX_RE = re.compile(r"-\d+$")
 
 
 class PanelLabelRouter(BaseRouter):
@@ -35,44 +26,47 @@ class PanelLabelRouter(BaseRouter):
         return PanelLabelRequest(**json_dict)
 
     def resolve_backflow_target(self, original_filename, fallback_product_type=None):
-        """线标专属：从文件名拆出中文场景名与型号，按型号聚合、按时间戳命名。
+        """线标专属落盘命名：顶层场景取文件名首段，型号取 API product_type，文件名保留原名。
 
-        解析成功用 (场景, 型号, timestamp) 落盘；不符合规则时回退框架默认
-        （场景=detector_type，型号=product_type / _unknown_model）。
+        路径形如 ``data/{文件名按-分割首段}/{日期}/{型号}/{ok|ng}/images|records/{原始文件名}``：
+          - 场景目录 = 原始文件名按 '-' 分割的第一段（如 'AI-集中式-…' → 'AI'），不再解析中文场景名
+          - 型号目录 = 请求 product_type，空则取 AICameraModel.AIParameterValue（见 _extract_product_type），
+            仍为空回退 _unknown_model；不再从文件名解析型号
+          - 落盘文件名 = 原始文件名（去扩展名，扩展名由框架据原文件名补回），不再改写为时间戳
         """
-        scene, model, timestamp = self._parse_filename(original_filename)
-        if model and timestamp:
-            return BackflowTarget(
-                scene_dir=self._sanitize_dir_name(scene) if scene else self.detector_type,
-                model_dir=model,
-                save_stem=timestamp,
-            )
-        return super().resolve_backflow_target(original_filename, fallback_product_type)
+        safe_filename = self._safe_client_filename(original_filename)
+        stem = os.path.splitext(safe_filename)[0] or safe_filename
+        # 在去扩展名的 stem 上切首段，避免无 '-' 文件名把扩展名带进场景目录
+        scene = stem.split("-", 1)[0] or self.detector_type
+        model_dir = (
+            self._sanitize_dir_name(fallback_product_type)
+            if fallback_product_type
+            else UNKNOWN_MODEL_DIR
+        )
+        return BackflowTarget(scene_dir=scene, model_dir=model_dir, save_stem=stem)
 
     @staticmethod
-    def _parse_filename(filename: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """从文件名解析 (场景, 型号, timestamp)。
+    def _extract_product_type(request_params: Any) -> Optional[str]:
+        """型号兜底：优先 modelParams.product_type，为空时取 AICameraModel 的 AIParameterValue。
 
-        形如 'AI-中压线标检验TK2-1-1764780181920.jpg' / '1+X线标检验PE1-A-...':
-        去扩展名 → 剥掉可选 'AI-' 前缀 → 末尾 -<digits> 切出 timestamp →
-        前半段最后一个中文字符之前是场景名，之后是型号 → 型号尾部 -<digits>
-        图片序号去掉（TK2-1 → TK2）。不符合规则时返回 (None, None, None)。
+        AICameraModel 不在 PanelLabelRequest 的强类型字段里，靠 ``extra='allow'`` 透传，
+        这里按属性/字典两种形态宽松读取，取列表中第一个非空 AIParameterValue。
         """
-        stem = _AI_PREFIX_RE.sub("", Path(filename).stem, count=1)
-        m = _FILENAME_TS_RE.match(stem)
-        if not m:
-            return None, None, None
-        body, timestamp = m.group(1), m.group(2)
-        last_cjk_idx = -1
-        for i, ch in enumerate(body):
-            if "一" <= ch <= "鿿":
-                last_cjk_idx = i
-        if last_cjk_idx < 0:
-            return None, None, None
-        scene = body[: last_cjk_idx + 1]
-        raw_model = body[last_cjk_idx + 1 :]
-        model = _MODEL_INDEX_SUFFIX_RE.sub("", raw_model, count=1) or raw_model
-        return scene, model, timestamp
+        mp = getattr(request_params, "modelParams", None)
+        product_type = getattr(mp, "product_type", None) if mp is not None else None
+        if product_type and str(product_type).strip():
+            return product_type
+        ai_models = getattr(request_params, "AICameraModel", None)
+        if isinstance(ai_models, (list, tuple)):
+            for item in ai_models:
+                value = (
+                    item.get("AIParameterValue")
+                    if isinstance(item, dict)
+                    else getattr(item, "AIParameterValue", None)
+                )
+                if value and str(value).strip():
+                    return value
+        return None
 
     def get_inputs(self, request_params: PanelLabelRequest, image: np.ndarray):
         mp = request_params.modelParams
