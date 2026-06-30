@@ -60,6 +60,37 @@ class TestRequestParamsValidation:
         )
         assert mp2.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)
 
+    def test_guideline_8_values_parsed(self):
+        """8 值四边形可解析为长度 8 元组"""
+        from vie_plugin_panel_label.schemas import ModelParams
+        mp = ModelParams(
+            product_type="SCUJ2",
+            line_order="A,B",
+            guideline_coordinates="0.1,0.1,0.9,0.1,0.9,0.9,0.1,0.9",
+        )
+        assert mp.guideline_coordinates == (0.1, 0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9)
+
+    def test_guideline_4_values_still_parsed(self):
+        """回归：4 值矩形仍照常解析"""
+        from vie_plugin_panel_label.schemas import ModelParams
+        mp = ModelParams(
+            product_type="TK2",
+            line_order="TK2-2,TK2-1",
+            guideline_coordinates="0.1,0.2,0.3,0.4",
+        )
+        assert mp.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)
+
+    def test_guideline_invalid_length_raises(self):
+        """非 4/8 长度（如 6 值）报校验错误"""
+        from pydantic import ValidationError
+        from vie_plugin_panel_label.schemas import ModelParams
+        with pytest.raises(ValidationError):
+            ModelParams(
+                product_type="SCUJ2",
+                line_order="A,B",
+                guideline_coordinates="0.1,0.2,0.3,0.4,0.5,0.6",
+            )
+
 
 class TestCompareKeyNormalization:
     def test_zero_o_confusion_not_mismatch(self, api_instance):

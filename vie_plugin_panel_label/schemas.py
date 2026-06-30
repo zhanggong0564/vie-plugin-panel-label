@@ -22,10 +22,11 @@ class ModelParams(BaseModel):
     # 标准线标顺序与引导框由业务随请求下发，不再从本地词典读取。
     # line_order：逗号分隔的标准 OCR 顺序，如 "TK2-2,TK2-1"。
     line_order: List[str] = Field(..., description="标准线标顺序，逗号分隔，如 'TK2-2,TK2-1'")
-    # guideline_coordinates：归一化引导框 x,y,w,h，如 "0.154,0.4075,0.692,0.336"。
-    # 服务端关闭 guideline 过滤（PANEL_LABEL_GUIDELINE_FILTER=false）时可不传；开启时缺失由业务层报参数错误。
-    guideline_coordinates: Optional[Tuple[float, float, float, float]] = Field(
-        default=None, description="引导框归一化坐标 x,y,w,h，如 '0.154,0.4075,0.692,0.336'；关闭 guideline 过滤时可省略"
+    # guideline_coordinates：归一化引导区域。4 值=轴对齐矩形 x,y,w,h；
+    # 8 值=四边形 x1,y1,x2,y2,x3,y3,x4,y4（顺时针四角）。关闭过滤时可省略。
+    guideline_coordinates: Optional[Tuple[float, ...]] = Field(
+        default=None,
+        description="引导区域归一化坐标：4 值=矩形 x,y,w,h；8 值=四边形顺时针四角；关闭 guideline 过滤时可省略",
     )
 
     @field_validator("line_order", mode="before")
@@ -39,9 +40,13 @@ class ModelParams(BaseModel):
     @field_validator("guideline_coordinates", mode="before")
     @classmethod
     def _split_guideline(cls, v):
-        """把逗号分隔字符串拆成浮点序列，交由 Tuple[float×4] 校验数量与类型。"""
+        """把逗号分隔字符串拆成浮点序列；仅允许 4 值(矩形)或 8 值(四边形)。"""
+        if v is None:
+            return v
         if isinstance(v, str):
-            return [p.strip() for p in v.split(",") if p.strip() != ""]
+            v = [p.strip() for p in v.split(",") if p.strip() != ""]
+        if len(v) not in (4, 8):
+            raise ValueError("guideline_coordinates 长度必须为 4(矩形 x,y,w,h) 或 8(四边形顺时针四角)")
         return v
 
 
