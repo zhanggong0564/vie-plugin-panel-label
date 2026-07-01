@@ -26,24 +26,25 @@ class PanelLabelRouter(BaseRouter):
         return PanelLabelRequest(**json_dict)
 
     def resolve_backflow_target(self, original_filename, fallback_product_type=None):
-        """线标专属落盘命名：顶层场景取文件名首段，型号取 API product_type，文件名保留原名。
+        """线标专属落盘命名：顶层场景取文件名首段，型号取 API product_type，文件名取末段。
 
-        路径形如 ``data/{文件名按-分割首段}/{日期}/{型号}/{ok|ng}/images|records/{原始文件名}``：
+        路径形如 ``data/{文件名按-分割首段}/{日期}/{型号}/{ok|ng}/images|records/{时间戳文件名}``：
           - 场景目录 = 原始文件名按 '-' 分割的第一段（如 'AI-集中式-…' → 'AI'），不再解析中文场景名
           - 型号目录 = 请求 product_type，空则取 AICameraModel.AIParameterValue（见 _extract_product_type），
             仍为空回退 _unknown_model；不再从文件名解析型号
-          - 落盘文件名 = 原始文件名（去扩展名，扩展名由框架据原文件名补回），不再改写为时间戳
+          - 落盘文件名 = 原始文件名去扩展名后最后一个 '-' 后的片段（通常为时间戳）
         """
         safe_filename = self._safe_client_filename(original_filename)
         stem = os.path.splitext(safe_filename)[0] or safe_filename
         # 在去扩展名的 stem 上切首段，避免无 '-' 文件名把扩展名带进场景目录
         scene = stem.split("-", 1)[0] or self.detector_type
+        save_stem = stem.rsplit("-", 1)[-1] or stem
         model_dir = (
             self._sanitize_dir_name(fallback_product_type)
             if fallback_product_type
             else UNKNOWN_MODEL_DIR
         )
-        return BackflowTarget(scene_dir=scene, model_dir=model_dir, save_stem=stem)
+        return BackflowTarget(scene_dir=scene, model_dir=model_dir, save_stem=save_stem)
 
     @staticmethod
     def _extract_product_type(request_params: Any) -> Optional[str]:
