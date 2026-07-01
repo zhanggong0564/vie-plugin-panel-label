@@ -3,7 +3,7 @@
 线标专属落盘命名随框架插件化下沉到本插件 Router：
   - 场景目录 = 原始文件名按 '-' 分割的第一段
   - 型号目录 = 请求 product_type，空则取 AICameraModel.AIParameterValue，仍空回退 _unknown_model
-  - 落盘文件名 = 原始文件名（去扩展名）
+  - 落盘文件名 = 原始文件名最后一个 '-' 后的片段（通常为时间戳）
 框架基类只保留场景无关的默认落盘命名。
 """
 import pytest
@@ -27,15 +27,20 @@ def router():
 @pytest.mark.parametrize(
     "filename, expected_scene, expected_stem",
     [
-        # 顶层场景取 '-' 首段，文件名保留原名去扩展名
-        ("AI-集中式-1764780181920.jpg", "AI", "AI-集中式-1764780181920"),
-        ("集中式-中压线标检验-1764780181920.png", "集中式", "集中式-中压线标检验-1764780181920"),
+        # 顶层场景取 '-' 首段，文件名取最后一段时间戳
+        ("AI-集中式-1764780181920.jpg", "AI", "1764780181920"),
+        ("集中式-中压线标检验-1764780181920.png", "集中式", "1764780181920"),
+        (
+            "集中式-SG1100UD-AI拍照-交流侧-6-1-1782886643866.jpg",
+            "集中式",
+            "1782886643866",
+        ),
         # 无 '-' 时整名即首段
         ("纯中文.jpg", "纯中文", "纯中文"),
     ],
 )
 def test_resolve_target_scene_and_stem(router, filename, expected_scene, expected_stem):
-    """场景目录取首段、文件名保留原名（型号由 product_type 决定）。"""
+    """场景目录取首段、文件名取末段（型号由 product_type 决定）。"""
     target = router.resolve_backflow_target(filename, fallback_product_type="TK2")
     assert target.scene_dir == expected_scene
     assert target.save_stem == expected_stem
