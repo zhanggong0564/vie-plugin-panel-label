@@ -1,19 +1,37 @@
 """panel_label 插件配置默认值测试（原 test/test_config.py 中的对应断言迁移而来）。"""
+import sys
+import types
+
+paddleocr = types.ModuleType("paddleocr")
+paddleocr.TextDetection = object
+paddleocr.TextLineOrientationClassification = object
+paddleocr.TextRecognition = object
+paddlex = types.ModuleType("paddlex")
+paddlex_inference = types.ModuleType("paddlex.inference")
+paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
+paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
+paddlex_components.CropByPolys = object
+sys.modules.setdefault("paddleocr", paddleocr)
+sys.modules.setdefault("paddlex", paddlex)
+sys.modules.setdefault("paddlex.inference", paddlex_inference)
+sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
+sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
+
 from vie_plugin_panel_label.config import PanelLabelConfig
 
 
 def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
-    assert cfg.model_path == "./weights/panel_label/label_det_yolo_v3.onnx"
-    assert cfg.confThreshold == 0.7
+    assert cfg.model_path == "./weights/panel_label/v2/best.onnx"
+    assert cfg.confThreshold == 0.6
     assert cfg.text_det_model_path == "./weights/panel_label/text_det_plane_ppocrv5m_v1"
 
 
 class TestGuidelineFilterSwitch:
-    def test_default_disabled(self, monkeypatch):
-        """当前部署默认关闭 guideline 过滤，开启需显式设 PANEL_LABEL_GUIDELINE_FILTER=true"""
+    def test_default_enabled(self, monkeypatch):
+        """当前部署默认开启 guideline 过滤，可用环境变量显式关闭。"""
         monkeypatch.delenv("PANEL_LABEL_GUIDELINE_FILTER", raising=False)
-        assert PanelLabelConfig().enable_guideline_filter is False
+        assert PanelLabelConfig().enable_guideline_filter is True
 
     def test_env_disable(self, monkeypatch):
         for off in ("false", "0", "no", "off", "False", "OFF"):
@@ -38,3 +56,17 @@ class TestDedupOverlapThresh:
     def test_env_invalid_falls_back(self, monkeypatch):
         monkeypatch.setenv("PANEL_LABEL_DEDUP_OVERLAP", "abc")
         assert PanelLabelConfig().dedup_overlap_thresh == 0.6
+
+
+class TestGuidelineOverlapThresh:
+    def test_default(self, monkeypatch):
+        monkeypatch.delenv("PANEL_LABEL_GUIDELINE_OVERLAP", raising=False)
+        assert PanelLabelConfig().guideline_overlap_thresh == 0.9
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("PANEL_LABEL_GUIDELINE_OVERLAP", "0.95")
+        assert PanelLabelConfig().guideline_overlap_thresh == 0.95
+
+    def test_env_invalid_falls_back(self, monkeypatch):
+        monkeypatch.setenv("PANEL_LABEL_GUIDELINE_OVERLAP", "abc")
+        assert PanelLabelConfig().guideline_overlap_thresh == 0.9

@@ -343,3 +343,16 @@ def polygon_contains(poly_pts, pt, include_border=True):
     if include_border:
         return dist >= 0
     return dist > 0
+
+
+def polygon_overlap_ratio(subject_poly, roi_poly) -> float:
+    """subject_poly 落在 roi_poly 内的面积占比，范围 [0, 1]。"""
+    subject = np.asarray(subject_poly, dtype=np.float32).reshape(-1, 2)
+    roi = np.asarray(roi_poly, dtype=np.float32).reshape(-1, 2)
+    subject_area = cv2.contourArea(subject)
+    if subject_area <= 0:
+        return 0.0
+    inter_area, _ = cv2.intersectConvexConvex(subject, roi)
+    if inter_area <= 0:
+        return 0.0
+    return min(1.0, float(inter_area) / float(subject_area))

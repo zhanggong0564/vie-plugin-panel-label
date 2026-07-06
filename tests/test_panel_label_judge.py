@@ -1,7 +1,26 @@
 """PanelLabelJudgeApi 面板标签业务逻辑单元测试"""
+import sys
+import types
+
 import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
+
+paddleocr = types.ModuleType("paddleocr")
+paddleocr.TextDetection = object
+paddleocr.TextLineOrientationClassification = object
+paddleocr.TextRecognition = object
+paddlex = types.ModuleType("paddlex")
+paddlex_inference = types.ModuleType("paddlex.inference")
+paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
+paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
+paddlex_components.CropByPolys = object
+sys.modules.setdefault("paddleocr", paddleocr)
+sys.modules.setdefault("paddlex", paddlex)
+sys.modules.setdefault("paddlex.inference", paddlex_inference)
+sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
+sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
+
 from schemas.inference_context import InferenceContext
 from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
 from vie_plugin_panel_label.models import PanelInfo, ErrorType, PanellabelItem
@@ -196,6 +215,38 @@ class TestGuidelineFilter:
         filtered = judge.guideline_filter(results, guideline, judge.w, judge.h)
         assert len(filtered.Points) == 0
 
+    def test_rect_keeps_line_when_overlap_ratio_is_enough(self, judge, guideline):
+        """线缆检测框可能覆盖整段线缆，部分越界但主体在引导区域内时应保留。"""
+        judge.w = 1000
+        judge.h = 800
+        results = PanellabelItem(
+            Points=[
+                [80, 300, 880, 300, 880, 500, 80, 500],
+            ],
+            index=[0],
+            class_id=[0],
+            texts=["KEEP"],
+            confidence=[0.9],
+        )
+        filtered = judge.guideline_filter(results, guideline, judge.w, judge.h)
+        assert len(filtered.Points) == 1
+        assert filtered.texts == ["KEEP"]
+
+    def test_rect_excludes_line_when_center_inside_but_overlap_ratio_is_low(self, judge, guideline):
+        judge.w = 1000
+        judge.h = 800
+        results = PanellabelItem(
+            Points=[
+                [-2000, 100, 3000, 100, 3000, 300, -2000, 300],
+            ],
+            index=[0],
+            class_id=[0],
+            texts=["DISCARD"],
+            confidence=[0.9],
+        )
+        filtered = judge.guideline_filter(results, guideline, judge.w, judge.h)
+        assert len(filtered.Points) == 0
+
     def test_polygon_points_inside_kept(self, judge):
         """8 值四边形：角点全在内 → 保留"""
         judge.w = 1000
@@ -228,14 +279,29 @@ class TestGuidelineFilter:
         filtered = judge.guideline_filter(results, poly, judge.w, judge.h)
         assert len(filtered.Points) == 0
 
-    def test_polygon_partial_outside_excluded(self, judge):
-        """8 值四边形：部分角点越界即整框剔除（与矩形 all-inside 语义一致）"""
+    def test_polygon_keeps_line_when_overlap_ratio_is_enough(self, judge):
+        """8 值四边形：部分角点越界但主体在引导区域内时保留。"""
         judge.w = 1000
         judge.h = 800
         # 窄四边形，右边界约 x=300
         poly = (0.1, 0.1, 0.3, 0.1, 0.3, 0.9, 0.1, 0.9)
         results = PanellabelItem(
-            Points=[[200, 200, 400, 200, 400, 300, 200, 300]],  # 右两角 x=400 越界
+            Points=[[80, 200, 300, 200, 300, 300, 80, 300]],  # 左两角 x=80 略越界，重叠率约 91%
+            index=[0],
+            class_id=[0],
+            texts=["KEEP"],
+            confidence=[0.9],
+        )
+        filtered = judge.guideline_filter(results, poly, judge.w, judge.h)
+        assert len(filtered.Points) == 1
+        assert filtered.texts == ["KEEP"]
+
+    def test_polygon_excludes_line_when_center_inside_but_overlap_ratio_is_low(self, judge):
+        judge.w = 1000
+        judge.h = 800
+        poly = (0.1, 0.1, 0.3, 0.1, 0.3, 0.9, 0.1, 0.9)
+        results = PanellabelItem(
+            Points=[[0, 200, 400, 200, 400, 300, 0, 300]],
             index=[0],
             class_id=[0],
             texts=["DISCARD"],

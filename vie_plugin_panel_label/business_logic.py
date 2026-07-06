@@ -15,7 +15,7 @@ from schemas.exceptions import InvalidParamsError, ModelInferenceError
 from services.api import detection_factory
 from services.base import BusinessLogicBase
 from utils import vision_logger
-from .utils import rect_contains, polygon_contains
+from .utils import polygon_overlap_ratio
 from .ordering import order_panel_item
 from .product_type import get_sort_mode
 
@@ -25,7 +25,9 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     def __init__(self, settings):
         super().__init__(settings)
-        self.enable_guideline_filter = PanelLabelConfig().enable_guideline_filter
+        cfg = PanelLabelConfig()
+        self.enable_guideline_filter = cfg.enable_guideline_filter
+        self.guideline_overlap_thresh = cfg.guideline_overlap_thresh
         self.class_name = {
             0: "line",
             1: "QFU",
@@ -64,27 +66,26 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         # 按下发值长度区分引导区域：4 值=轴对齐矩形（旧），8 值=四边形（新）。
         boxes = results.Points
         if len(norm_rect) == 8:
-            poly = [
+            roi_poly = [
                 norm_rect[i] * (img_w if i % 2 == 0 else img_h)
                 for i in range(8)
             ]
-            keep_indices = [
-                i for i, box in enumerate(boxes)
-                if all(
-                    polygon_contains(poly, (box[j], box[j + 1]))
-                    for j in range(0, len(box), 2)
-                )
-            ]
         else:
             x_norm, y_norm, w_norm, h_norm = norm_rect
-            rect = (int(x_norm * img_w), int(y_norm * img_h), int(w_norm * img_w), int(h_norm * img_h))
-            keep_indices = [
-                i for i, box in enumerate(boxes)
-                if all(
-                    rect_contains(rect, (box[j], box[j + 1]))
-                    for j in range(0, len(box), 2)
-                )
+            x = x_norm * img_w
+            y = y_norm * img_h
+            w = w_norm * img_w
+            h = h_norm * img_h
+            roi_poly = [
+                x, y,
+                x + w, y,
+                x + w, y + h,
+                x, y + h,
             ]
+        keep_indices = [
+            i for i, box in enumerate(boxes)
+            if polygon_overlap_ratio(box, roi_poly) >= self.guideline_overlap_thresh
+        ]
         filtered_results = PanellabelItem(
             Points=[results.Points[i] for i in keep_indices],
             index=[results.index[i] for i in keep_indices],
