@@ -23,10 +23,10 @@ class ModelParams(BaseModel):
     # line_order：逗号分隔的标准 OCR 顺序，如 "TK2-2,TK2-1"。
     line_order: List[str] = Field(..., description="标准线标顺序，逗号分隔，如 'TK2-2,TK2-1'")
     # guideline_coordinates：归一化引导区域。4 值=轴对齐矩形 x,y,w,h；
-    # 8 值=四边形 x1,y1,x2,y2,x3,y3,x4,y4（顺时针四角）。关闭过滤时可省略。
-    guideline_coordinates: Optional[Tuple[float, ...]] = Field(
-        default=None,
-        description="引导区域归一化坐标：4 值=矩形 x,y,w,h；8 值=四边形顺时针四角；关闭 guideline 过滤时可省略",
+    # 8 值=四边形 x1,y1,x2,y2,x3,y3,x4,y4（顺时针四角）。
+    guideline_coordinates: Tuple[float, ...] = Field(
+        ...,
+        description="必填引导区域归一化坐标：4 值=矩形 x,y,w,h；8 值=四边形顺时针四角",
     )
 
     @field_validator("line_order", mode="before")

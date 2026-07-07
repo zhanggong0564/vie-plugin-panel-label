@@ -7,19 +7,25 @@ from unittest.mock import patch
 from schemas.exceptions import InvalidParamsError
 from schemas.inference_context import InferenceContext
 
+paddleocr = types.ModuleType("paddleocr")
+paddleocr.TextDetection = object
+paddleocr.TextLineOrientationClassification = object
+paddleocr.TextRecognition = object
+paddlex = types.ModuleType("paddlex")
+paddlex_inference = types.ModuleType("paddlex.inference")
+paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
+paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
+paddlex_components.CropByPolys = object
+sys.modules.setdefault("paddleocr", paddleocr)
+sys.modules.setdefault("paddlex", paddlex)
+sys.modules.setdefault("paddlex.inference", paddlex_inference)
+sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
+sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
+
 
 @pytest.fixture
 def api_instance(monkeypatch):
     """绕过 OCRPipeline 加载，构造 PanelLabelJudgeApi 实例"""
-    paddleocr = types.ModuleType("paddleocr")
-    paddleocr.TextDetection = object
-    paddleocr.TextLineOrientationClassification = object
-    paddleocr.TextRecognition = object
-    paddlex = types.ModuleType("paddlex")
-    paddlex_inference = types.ModuleType("paddlex.inference")
-    paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
-    paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
-    paddlex_components.CropByPolys = object
     monkeypatch.setitem(sys.modules, "paddleocr", paddleocr)
     monkeypatch.setitem(sys.modules, "paddlex", paddlex)
     monkeypatch.setitem(sys.modules, "paddlex.inference", paddlex_inference)
@@ -48,17 +54,20 @@ class TestRequestParamsValidation:
         assert "line_order" in exc_info.value.error_msg
         assert exc_info.value.context.get("scenario") == "panel_label"
 
-    def test_guideline_coordinates_optional_in_schema(self):
-        """关闭 guideline 过滤的部署下调用方可不传 guideline_coordinates"""
+    def test_guideline_coordinates_required_in_schema(self):
+        """默认契约下调用方必须传 guideline_coordinates。"""
+        from pydantic import ValidationError
         from vie_plugin_panel_label.schemas import ModelParams
-        mp = ModelParams(product_type="TK2", line_order="TK2-2,TK2-1")
-        assert mp.guideline_coordinates is None
-        mp2 = ModelParams(
+
+        with pytest.raises(ValidationError):
+            ModelParams(product_type="TK2", line_order="TK2-2,TK2-1")
+
+        mp = ModelParams(
             product_type="TK2",
             line_order="TK2-2,TK2-1",
             guideline_coordinates="0.1,0.2,0.3,0.4",
         )
-        assert mp2.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)
+        assert mp.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)
 
     def test_guideline_8_values_parsed(self):
         """8 值四边形可解析为长度 8 元组"""
