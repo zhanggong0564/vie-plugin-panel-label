@@ -1,4 +1,5 @@
 """run.py 识别错误样本落盘 (PPOCR rec) 测试。"""
+import dataclasses
 import importlib.util
 from pathlib import Path
 
@@ -28,6 +29,14 @@ def _make_result(message, details):
         status=all(s for s, _ in details),
         message=message,
     )
+
+
+def test_panel_label_item_has_no_text_detection_points():
+    from vie_plugin_panel_label.models import PanellabelItem
+
+    fields = {field.name for field in dataclasses.fields(PanellabelItem)}
+    assert "text_det_points" not in fields
+    assert "text_crops" in fields
 
 
 def test_save_rec_hard_samples_mismatch(tmp_path, run_mod):

@@ -89,7 +89,6 @@ def visualize(image, item, result, product_type):
     """画整体判定横幅 + guideline 参考框（绿）+ 线标框（绿=通过 红=异常）+ 识别文本。
 
     线标框用 item 的原图像素坐标；状态与文本取自 result.detailList（与 item 逐项对齐）。
-    直送对比分支已移除 DBNet 文本检测，text_det_points 恒空，故不再画文本检测框（蓝）。
     """
     h, w = image.shape[:2]
     if product_type in PRODUCT_guideline:

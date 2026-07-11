@@ -44,6 +44,26 @@ def _make_ctx(result, product_type, w=1000, h=1000, rule="all", extra=None):
     return ctx
 
 
+def test_model_initialization_uses_direct_ocr_contract():
+    from config import settings
+    from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
+
+    with patch("vie_plugin_panel_label.business_logic.OCRPipeline") as pipeline:
+        PanelLabelJudgeApi(settings)
+
+    pipeline.assert_called_once_with(
+        "./weights/panel_label/v2/best.onnx",
+        "./weights/panel_label/v2/textline_ori_lcnet_v2",
+        "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr",
+        0.6,
+        0.8,
+        0.7,
+        0.9,
+        None,
+        dedup_overlap_thresh=0.6,
+    )
+
+
 class TestRequestParamsValidation:
     def test_missing_line_order_and_guideline_raises(self, api_instance):
         """standard_result / guideline 由请求下发，缺失时报参数错误"""

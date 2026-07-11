@@ -24,7 +24,21 @@ def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
     assert cfg.model_path == "./weights/panel_label/v2/best.onnx"
     assert cfg.confThreshold == 0.6
-    assert cfg.text_det_model_path == "./weights/panel_label/text_det_plane_ppocrv5m_v1"
+
+
+def test_direct_ocr_config_has_no_text_detection_fields():
+    cfg = PanelLabelConfig()
+    prefix = "text" + "_det_"
+    stale = {
+        prefix + "model_path",
+        prefix + "limit_side_len",
+        prefix + "limit_type",
+        prefix + "thresh",
+        prefix + "box_thresh",
+        prefix + "unclip_ratio",
+        prefix + "input_shape",
+    }
+    assert stale.isdisjoint(vars(type(cfg)))
 
 
 class TestGuidelineFilterSwitch:
