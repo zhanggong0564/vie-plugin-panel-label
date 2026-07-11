@@ -21,14 +21,12 @@ class ErrorType(str, Enum):
 
 @dataclass
 class PanellabelItem:
-    """OCR 三阶段管线的逐行推理输出，各 List 字段按行逐项对齐。"""
+    """直送 OCR 管线的逐行输出，各 List 字段按行逐项对齐。"""
     Points: List[np.ndarray] = field(default_factory=list)
     index: List[int] = field(default_factory=list)
     class_id: List[int] = field(default_factory=list)
     texts: List[str] = field(default_factory=list)
     confidence: List[float] = field(default_factory=list)
-    # 文本检测框（原图像素坐标多边形，与 texts/Points 逐项对齐；无检测处为 None）。仅可视化用。
-    text_det_points: List = field(default_factory=list)
     # 识别模型实际输入的文本行小图（rotated_crop，与 texts 逐项对齐；无识别处为 None）。供数据回流落盘用。
     text_crops: List = field(default_factory=list)
 

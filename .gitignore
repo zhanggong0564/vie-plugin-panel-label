@@ -24,3 +24,4 @@ examples/orient_review/*.err
 .idea/
 .env
 .worktrees/
+.superpowers/

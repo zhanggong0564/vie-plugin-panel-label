@@ -45,13 +45,6 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 cfg.text_rec_score_thresh,
                 cfg.text_orient_score_thresh,
                 cfg.text_rec_input_shape,
-                cfg.text_det_model_path,
-                cfg.text_det_limit_side_len,
-                cfg.text_det_limit_type,
-                cfg.text_det_thresh,
-                cfg.text_det_box_thresh,
-                cfg.text_det_unclip_ratio,
-                cfg.text_det_input_shape,
                 dedup_overlap_thresh=cfg.dedup_overlap_thresh,
             )
         except Exception as e:
@@ -92,7 +85,6 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             class_id=[results.class_id[i] for i in keep_indices],
             texts=[results.texts[i] for i in keep_indices],
             confidence=[results.confidence[i] for i in keep_indices],
-            text_det_points=[results.text_det_points[i] for i in keep_indices] if results.text_det_points else [],
             text_crops=[results.text_crops[i] for i in keep_indices] if results.text_crops else [],
         )
         return filtered_results

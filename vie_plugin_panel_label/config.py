@@ -31,19 +31,10 @@ def _env_float(name: str, default: float) -> float:
 
 class PanelLabelConfig:
     model_path = "./weights/panel_label/v2/best.onnx"
-    text_det_model_path = "./weights/panel_label/text_det_plane_ppocrv5m_v1"
     orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v2"
     text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr"
     confThreshold = 0.6
     nmsThreshold = 0.8
-    # TextDetection
-
-    text_det_limit_side_len = 1248
-    text_det_limit_type = "max"
-    text_det_thresh = 0.3
-    text_det_box_thresh = 0.3
-    text_det_unclip_ratio = 2
-    text_det_input_shape = [3, 160, 1248]
     # TextLineOrientation 文本行方向分类
     # 仅当 top-1 置信度 >= 该阈值才直接采信模型方向；低于该阈值则正反两个朝向
     # 都送识别，取 rec_score 高者（用识别置信度仲裁方向，比赌分类器稳）。

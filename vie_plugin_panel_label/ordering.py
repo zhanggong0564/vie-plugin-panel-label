@@ -192,6 +192,5 @@ def order_panel_item(item, sort_mode: str = "linear"):
         class_id=_reindex(item.class_id, perm),
         texts=_reindex(item.texts, perm),
         confidence=_reindex(item.confidence, perm),
-        text_det_points=_reindex(item.text_det_points, perm),
         text_crops=_reindex(item.text_crops, perm),
     )
