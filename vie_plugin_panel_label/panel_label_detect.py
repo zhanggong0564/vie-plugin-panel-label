@@ -7,31 +7,17 @@
 @Description  : 面板标签检测
 '''
 
-from services.yolo import YoloOnnxInfer
-from services.utils import *
-import numpy as np
-from schemas.data_base import DetectResult
-from paddleocr import TextDetection, TextLineOrientationClassification, TextRecognition
-from paddlex.inference.pipelines.components import CropByPolys
-from .utils import Points_to_Mask, dedup_overlapping_polygons, map_roi_points_to_original
-from .models import PanellabelItem
-
-import os
-import yaml
 import time
+
+import cv2
+import numpy as np
+from paddleocr import TextLineOrientationClassification, TextRecognition
+
+from services.yolo import YoloOnnxInfer
 from utils import vision_logger
 
-
-def _resolve_model_name(model_dir: str) -> str:
-    """从导出推理目录的 inference.yml 解析 Global.model_name。
-
-    paddleocr 高层封装不会自动解析，需显式传入与目录架构匹配的 model_name，
-    否则会触发 'Model name mismatch' 断言。
-    """
-    cfg_path = os.path.join(model_dir, "inference.yml")
-    with open(cfg_path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    return cfg["Global"]["model_name"]
+from .models import PanellabelItem
+from .utils import Points_to_Mask, dedup_overlapping_polygons
 
 
 class PanelLabelDetect(YoloOnnxInfer):
@@ -54,32 +40,17 @@ class OCRPipeline:
         text_rec_score_thresh=0.7,
         text_orient_score_thresh=0.7,
         text_rec_input_shape=None,
-        text_det_model_path=None,
-        text_det_limit_side_len=128,
-        text_det_limit_type="min",
-        text_det_thresh=0.3,
-        text_det_box_thresh=0.4,
-        text_det_unclip_ratio=2.0,
-        text_det_input_shape=None,
         dedup_overlap_thresh=0.6,
     ):
         self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
         # 同类实例旋转框 IoS 去重阈值（>=1 关闭），抑制同一线标的重复检测框
         self.dedup_overlap_thresh = dedup_overlap_thresh
 
-        # ===== 直送对比分支（feat/direct-ocr）=====
-        # 跳过 DBNet 文本检测：mask2roi 展平后的 roi 本身即单行文本条，直接送 cls+rec。
-        # 保留 __init__ 签名不变（det 相关参数不再使用），business_logic/run.py 无需改动。
-        # 与 main（det 版）的差异仅此一处，切分支即对比。
-        self.text_det_model = None
-
-        # Stage 2: Text Line Orientation
         self.text_orient_model = TextLineOrientationClassification(
             model_name="PP-LCNet_x1_0_textline_ori",
             model_dir=orient_model_path,
         )
 
-        # Stage 3: Text Recognition
         self.text_rec_model = TextRecognition(
             model_name="PP-OCRv5_server_rec",
             model_dir=text_recognition_model_path,
@@ -87,9 +58,55 @@ class OCRPipeline:
         )
 
         self.text_rec_score_thresh = text_rec_score_thresh
-        # 文本行方向：仅当 180°置信度 >= 该阈值才翻转，否则保持正向，抑制误翻
         self.text_orient_score_thresh = text_orient_score_thresh
-        self._crop_by_polys = CropByPolys(det_box_type="quad")
+
+    def _orient_crops(self, crops):
+        orient_results = self.text_orient_model.predict(crops)
+        rotated = []
+        uncertain = []
+        for index, (crop_image, result) in enumerate(zip(crops, orient_results)):
+            angle = int(result["class_ids"][0])
+            score = float(result["scores"][0])
+            rotated.append(
+                cv2.rotate(crop_image, cv2.ROTATE_180)
+                if angle == 1
+                else crop_image
+            )
+            if score < self.text_orient_score_thresh:
+                uncertain.append(index)
+        return rotated, uncertain
+
+    def _recognize_with_fallback(self, rotated_crops, uncertain_indices):
+        final_crops = list(rotated_crops)
+        results = list(self.text_rec_model.predict(final_crops))
+        if not uncertain_indices:
+            return final_crops, results
+        flipped = [
+            cv2.rotate(final_crops[index], cv2.ROTATE_180)
+            for index in uncertain_indices
+        ]
+        flipped_results = list(self.text_rec_model.predict(flipped))
+        for position, index in enumerate(uncertain_indices):
+            if float(flipped_results[position]["rec_score"]) > float(
+                results[index]["rec_score"]
+            ):
+                final_crops[index] = flipped[position]
+                results[index] = flipped_results[position]
+        return final_crops, results
+
+    def _extract_texts(self, rec_results):
+        texts = []
+        for result in rec_results:
+            text = result["rec_text"]
+            if isinstance(text, list):
+                text = text[0] if text else ""
+            score = float(result["rec_score"])
+            texts.append(
+                text
+                if text and text.strip() and score >= self.text_rec_score_thresh
+                else None
+            )
+        return texts
 
     def infer(self, image) -> PanellabelItem:
         results = self.detect_model.infer(image)
@@ -112,70 +129,20 @@ class OCRPipeline:
         vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
 
-        # Stage 1: 直送对比分支 —— 跳过文本检测，展平 roi 整条直接当待识别小图。
-        # det 版在此用 DBNet 裁紧文字区；本分支不裁，text_det_points 全空（仅影响可视化蓝框）。
-        all_crops = list(mask_rois)
-        crop_roi_map = list(range(len(mask_rois)))
-        text_det_map: dict = {}  # 直送无文本检测框，留空
-        det_end = time.time()
-        vision_logger.debug(f"Text Detection(direct, skipped): {det_end - start:.4f}秒")
-
-        # Stage 2: Text Line Orientation
-        text_map: dict = {}
-        crop_map: dict = {}  # roi_idx -> rotated_crop（识别模型输入小图，供数据回流落盘）
-        if all_crops:
-            orient_results = self.text_orient_model.predict(all_crops)
-            # 高置信(>=阈值)直接采信分类器方向；低置信项标记待识别仲裁。
-            angles, uncertain = [], []
-            for i, r in enumerate(orient_results):
-                cls = int(r["class_ids"][0])
-                score = float(r["scores"][0])
-                angles.append(cls)
-                if score < self.text_orient_score_thresh:
-                    uncertain.append(i)
-            orient_end = time.time()
-            vision_logger.debug(
-                f"Text Orientation: {orient_end - det_end:.4f}秒, 低置信仲裁项 {len(uncertain)}/{len(all_crops)}"
+        text_crops = []
+        texts = []
+        if mask_rois:
+            rotated_crops, uncertain_indices = self._orient_crops(list(mask_rois))
+            text_crops, rec_results = self._recognize_with_fallback(
+                rotated_crops, uncertain_indices
             )
-
-            # Stage 3: Rotate + Text Recognition
-            rotated_crops = [
-                cv2.rotate(crop, cv2.ROTATE_180) if angle == 1 else crop for crop, angle in zip(all_crops, angles)
-            ]
-            rec_results = self.text_rec_model.predict(rotated_crops)
-
-            # 方向仲裁：低置信项把当前朝向再翻 180° 识别一遍，rec_score 高者胜出。
-            # 用识别置信度判定方向，纠正方向分类器在不确定样本上的漏翻/误翻。
-            if uncertain:
-                flipped = [cv2.rotate(rotated_crops[i], cv2.ROTATE_180) for i in uncertain]
-                flipped_rec = self.text_rec_model.predict(flipped)
-                for k, i in enumerate(uncertain):
-                    if float(flipped_rec[k]["rec_score"]) > float(rec_results[i]["rec_score"]):
-                        rotated_crops[i] = flipped[k]
-                        rec_results[i] = flipped_rec[k]
-            rec_end = time.time()
-            vision_logger.debug(f"Text Recognition: {rec_end - orient_end:.4f}秒")
-
-            for crop_idx, rec_res in enumerate(rec_results):
-                roi_idx = crop_roi_map[crop_idx]
-                crop_map[roi_idx] = rotated_crops[crop_idx]
-                rec_text = rec_res["rec_text"]
-                rec_score = rec_res["rec_score"]
-                if isinstance(rec_text, list):
-                    rec_text = rec_text[0] if rec_text else ""
-                if rec_text and rec_text.strip() and rec_score >= self.text_rec_score_thresh:
-                    text_map[roi_idx] = rec_text
-
-        # 所有 YOLO 检测到的线标均进入结果，OCR 未识别的给 None
-        all_rois = list(range(len(mask_rois)))
-        texts = [text_map.get(i) for i in all_rois]
-        text_det_points = [text_det_map.get(i) for i in all_rois]
-        text_crops = [crop_map.get(i) for i in all_rois]
+            texts = self._extract_texts(rec_results)
 
         end = time.time()
         vision_logger.debug(f"OCR 三阶段总耗时: {end - start:.4f}秒")
         line_indices = np.where(class_ids == 0)[0]
-        ori_index = [line_indices[sorted_idxs[i]] for i in all_rois]
+        roi_indices = range(len(mask_rois))
+        ori_index = [line_indices[sorted_idxs[index]] for index in roi_indices]
         positions = [
             np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygons[idx], dtype=np.float32)))).flatten().tolist()
             for idx in ori_index
@@ -188,24 +155,7 @@ class OCRPipeline:
             class_id=roi_classes_ids.tolist(),
             texts=texts,
             confidence=confidences,
-            text_det_points=text_det_points,
             text_crops=text_crops,
         )
 
         return panel_label_item
-
-
-class OCRPipelineCrop:
-    def __init__(self, detect_model_path, orient_model_path, confThreshold=0.5, nmsThreshold=0.5):
-        self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
-
-    def infer(self, image, sort_by="xy") -> PanellabelItem:
-        results = self.detect_model.infer(image)
-        class_ids = np.array(results.class_ids)
-        mask_polygons = np.array(results.mask_polygons, dtype=object)
-        points_line = mask_polygons[class_ids == 0]
-        start = time.time()
-        mask_rois, sorted_idxs = Points_to_Mask(image, points_line, sort_by=sort_by)
-        end = time.time()
-        vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
-        return mask_rois
