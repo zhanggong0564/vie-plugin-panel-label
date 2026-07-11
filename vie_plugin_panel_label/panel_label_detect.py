@@ -61,7 +61,12 @@ class OCRPipeline:
         self.text_orient_score_thresh = text_orient_score_thresh
 
     def _orient_crops(self, crops):
-        orient_results = self.text_orient_model.predict(crops)
+        orient_results = list(self.text_orient_model.predict(crops))
+        if len(orient_results) != len(crops):
+            raise ValueError(
+                f"orientation result count {len(orient_results)} does not match "
+                f"crop count {len(crops)}"
+            )
         rotated = []
         uncertain = []
         for index, (crop_image, result) in enumerate(zip(crops, orient_results)):
@@ -79,6 +84,11 @@ class OCRPipeline:
     def _recognize_with_fallback(self, rotated_crops, uncertain_indices):
         final_crops = list(rotated_crops)
         results = list(self.text_rec_model.predict(final_crops))
+        if len(results) != len(final_crops):
+            raise ValueError(
+                f"recognition result count {len(results)} does not match "
+                f"crop count {len(final_crops)}"
+            )
         if not uncertain_indices:
             return final_crops, results
         flipped = [
@@ -86,6 +96,11 @@ class OCRPipeline:
             for index in uncertain_indices
         ]
         flipped_results = list(self.text_rec_model.predict(flipped))
+        if len(flipped_results) != len(flipped):
+            raise ValueError(
+                f"fallback recognition result count {len(flipped_results)} "
+                f"does not match crop count {len(flipped)}"
+            )
         for position, index in enumerate(uncertain_indices):
             if float(flipped_results[position]["rec_score"]) > float(
                 results[index]["rec_score"]
@@ -124,7 +139,7 @@ class OCRPipeline:
                 mask_polygons = mask_polygons[keep]
         points_line = mask_polygons[class_ids == 0] if 0 in class_ids else []
         start = time.time()
-        mask_rois, sorted_idxs, roi_transforms = Points_to_Mask(image, points_line, return_maps=True)
+        mask_rois, sorted_idxs, _ = Points_to_Mask(image, points_line, return_maps=True)
         end = time.time()
         vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()

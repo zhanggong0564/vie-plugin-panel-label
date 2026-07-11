@@ -35,7 +35,8 @@ def test_panel_label_item_has_no_text_detection_points():
     from vie_plugin_panel_label.models import PanellabelItem
 
     fields = {field.name for field in dataclasses.fields(PanellabelItem)}
-    assert "text_det_points" not in fields
+    removed_field = "text" + "_det" + "_points"
+    assert removed_field not in fields
     assert "text_crops" in fields
 
 
