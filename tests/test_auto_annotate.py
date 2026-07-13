@@ -16,7 +16,7 @@ class TestBuildLabelmeJson:
 
     def test_basic_structure(self):
         """返回的 dict 必须包含 LabelMe 所有顶层字段"""
-        from scripts.auto_annotate import _build_labelme_json
+        from scripts.data.auto_annotate import _build_labelme_json
 
         result = _build_labelme_json(
             shapes=[],
@@ -35,7 +35,7 @@ class TestBuildLabelmeJson:
 
     def test_shape_fields(self):
         """shapes 列表中每个元素必须包含所有 LabelMe shape 字段"""
-        from scripts.auto_annotate import _build_labelme_json
+        from scripts.data.auto_annotate import _build_labelme_json
 
         shapes = [
             {
@@ -65,7 +65,7 @@ class TestBuildLabelmeJson:
 
     def test_empty_description_when_ocr_failed(self):
         """OCR 未识别时 description 应为空字符串"""
-        from scripts.auto_annotate import _build_labelme_json
+        from scripts.data.auto_annotate import _build_labelme_json
 
         shapes = [
             {
@@ -85,12 +85,12 @@ class TestAutoAnnotatorInit:
     def test_init_loads_three_models(self):
         """初始化时应加载 TextDetection、TextLineOrientationClassification、TextRecognition"""
         with (
-            patch("scripts.auto_annotate.TextDetection") as mock_det,
-            patch("scripts.auto_annotate.TextLineOrientationClassification") as mock_ori,
-            patch("scripts.auto_annotate.TextRecognition") as mock_rec,
-            patch("scripts.auto_annotate.CropByPolys") as mock_crop,
+            patch("scripts.data.auto_annotate.TextDetection") as mock_det,
+            patch("scripts.data.auto_annotate.TextLineOrientationClassification") as mock_ori,
+            patch("scripts.data.auto_annotate.TextRecognition") as mock_rec,
+            patch("scripts.data.auto_annotate.CropByPolys") as mock_crop,
         ):
-            from scripts.auto_annotate import AutoAnnotator
+            from scripts.data.auto_annotate import AutoAnnotator
             ann = AutoAnnotator(
                 orient_model_path="fake/orient",
                 rec_model_path="fake/rec",
@@ -110,12 +110,12 @@ class TestAutoAnnotatorInferImage:
     def annotator(self):
         """构造 AutoAnnotator，绕过真实模型加载"""
         with (
-            patch("scripts.auto_annotate.TextDetection"),
-            patch("scripts.auto_annotate.TextLineOrientationClassification"),
-            patch("scripts.auto_annotate.TextRecognition"),
-            patch("scripts.auto_annotate.CropByPolys"),
+            patch("scripts.data.auto_annotate.TextDetection"),
+            patch("scripts.data.auto_annotate.TextLineOrientationClassification"),
+            patch("scripts.data.auto_annotate.TextRecognition"),
+            patch("scripts.data.auto_annotate.CropByPolys"),
         ):
-            from scripts.auto_annotate import AutoAnnotator
+            from scripts.data.auto_annotate import AutoAnnotator
             ann = AutoAnnotator(orient_model_path="x", rec_model_path="y", score_thresh=0.7)
         return ann
 
@@ -208,12 +208,12 @@ class TestAutoAnnotatorProcessDir:
     def annotator_no_models(self):
         """绕过模型加载，构造 AutoAnnotator"""
         with (
-            patch("scripts.auto_annotate.TextDetection"),
-            patch("scripts.auto_annotate.TextLineOrientationClassification"),
-            patch("scripts.auto_annotate.TextRecognition"),
-            patch("scripts.auto_annotate.CropByPolys"),
+            patch("scripts.data.auto_annotate.TextDetection"),
+            patch("scripts.data.auto_annotate.TextLineOrientationClassification"),
+            patch("scripts.data.auto_annotate.TextRecognition"),
+            patch("scripts.data.auto_annotate.CropByPolys"),
         ):
-            from scripts.auto_annotate import AutoAnnotator
+            from scripts.data.auto_annotate import AutoAnnotator
             return AutoAnnotator(orient_model_path="x", rec_model_path="y")
 
     def _make_fake_image(self, path: Path):

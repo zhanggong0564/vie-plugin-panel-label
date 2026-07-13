@@ -88,6 +88,8 @@ def _paddle_predictor(model_name: str, model_dir: Path):
         pytest.skip(
             f"PaddleOCR 3.4.0 is required, found {paddleocr.__version__}"
         )
+    if paddle.device.cuda.device_count() < 1:
+        pytest.skip("CUDA device is unavailable for the GPU parity reference")
     paddle.set_device("gpu:0")
     return paddlex.create_model(
         model_name,

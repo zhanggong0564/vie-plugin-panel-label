@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from scripts.convert_ocr_dataset_to_ppocr import Sample, find_samples
+from scripts.data.convert_ocr_dataset_to_ppocr import Sample, find_samples
 
 
 def _write_labelme(json_path: Path, image_name: str, shapes: list[dict]) -> None:
@@ -89,7 +89,12 @@ def test_sample_image_path_exists(mini_dataset: Path) -> None:
         assert s.station_code in {"J46", "T1"}
 
 
-from scripts.convert_ocr_dataset_to_ppocr import split_samples, build_det_annotation, det_filename, rec_filename
+from scripts.data.convert_ocr_dataset_to_ppocr import (
+    build_det_annotation,
+    det_filename,
+    rec_filename,
+    split_samples,
+)
 
 
 def test_split_deterministic_with_seed(mini_dataset: Path) -> None:
@@ -123,7 +128,7 @@ def test_rec_filename_format() -> None:
 def test_expand_box_ratio_zero_is_noop() -> None:
     """ratio<=0 时原样返回。"""
     import numpy as np
-    from scripts.convert_ocr_dataset_to_ppocr import _expand_box
+    from scripts.data.convert_ocr_dataset_to_ppocr import _expand_box
 
     box = np.array([[10, 10], [110, 10], [110, 40], [10, 40]], dtype=np.float32)
     assert np.array_equal(_expand_box(box, 0.0), box)
@@ -132,7 +137,7 @@ def test_expand_box_ratio_zero_is_noop() -> None:
 def test_expand_box_grows_by_short_side_ratio() -> None:
     """轴对齐框：宽高应各增长 2×ratio×短边，且仍居中。"""
     import numpy as np
-    from scripts.convert_ocr_dataset_to_ppocr import _expand_box
+    from scripts.data.convert_ocr_dataset_to_ppocr import _expand_box
 
     # 宽 100、高 30 的轴对齐框，短边=30，ratio=0.2 → 每边外扩 6px
     box = np.array([[10, 10], [110, 10], [110, 40], [10, 40]], dtype=np.float32)
@@ -176,7 +181,7 @@ def test_build_det_annotation_skips_short_points(tmp_path: Path) -> None:
     assert build_det_annotation(j) == []
 
 
-from scripts.convert_ocr_dataset_to_ppocr import write_det_split
+from scripts.data.convert_ocr_dataset_to_ppocr import write_det_split
 
 
 def test_write_det_split_creates_images_and_labels(mini_dataset: Path, tmp_path: Path) -> None:
@@ -225,7 +230,7 @@ def test_write_det_split_skips_empty_shape_image(tmp_path: Path) -> None:
     assert (det_dir / "train.txt").read_text() == ""
 
 
-from scripts.convert_ocr_dataset_to_ppocr import write_dict
+from scripts.data.convert_ocr_dataset_to_ppocr import write_dict
 
 
 def test_write_dict_unique_sorted(tmp_path: Path) -> None:
@@ -281,13 +286,19 @@ def rec_pipeline():
     pytest.importorskip("paddlex")
     try:
         from vie_plugin_panel_label.config import PanelLabelConfig
-        from scripts.convert_ocr_dataset_to_ppocr import build_rec_pipeline
+        from scripts.data.convert_ocr_dataset_to_ppocr import build_rec_pipeline
     except Exception as e:
         pytest.skip(f"cannot import deps: {e}")
 
     cfg = PanelLabelConfig()
-    if not Path(cfg.orient_model_path).exists():
-        pytest.skip(f"orient model not found at {cfg.orient_model_path}")
+    orient_model_path = Path(cfg.orient_model_path)
+    if not orient_model_path.is_dir() or not (
+        orient_model_path / "inference.yml"
+    ).is_file():
+        pytest.skip(
+            "PaddleOCR orientation model bundle is unavailable at "
+            f"{orient_model_path}"
+        )
     return build_rec_pipeline(cfg)
 
 
@@ -320,7 +331,7 @@ def rec_mini_dataset(tmp_path: Path) -> Path:
 
 def test_rec_crop_pixel_equality(rec_pipeline, rec_mini_dataset: Path, tmp_path: Path) -> None:
     """核心：保存到磁盘的 PNG 读回后必须与 pipeline 内存里的 rotated_crop 像素相同。"""
-    from scripts.convert_ocr_dataset_to_ppocr import process_rec_sample, write_rec_split, rec_filename
+    from scripts.data.convert_ocr_dataset_to_ppocr import process_rec_sample, write_rec_split, rec_filename
     import numpy as np
 
     samples = find_samples(rec_mini_dataset)
@@ -353,7 +364,7 @@ def test_rec_crop_pixel_equality(rec_pipeline, rec_mini_dataset: Path, tmp_path:
 def test_rec_multi_ratio_augmentation(rec_pipeline, rec_mini_dataset: Path, tmp_path: Path) -> None:
     """多外扩比例：每条 strip 应按每个比例各产出一份带标签的 PNG。"""
     from dataclasses import replace
-    from scripts.convert_ocr_dataset_to_ppocr import write_rec_split, rec_filename
+    from scripts.data.convert_ocr_dataset_to_ppocr import write_rec_split, rec_filename
 
     pipeline = replace(rec_pipeline, expand_ratios=(0.0, 0.15, 0.3))
     samples = find_samples(rec_mini_dataset)
@@ -379,7 +390,7 @@ def test_rec_multi_ratio_augmentation(rec_pipeline, rec_mini_dataset: Path, tmp_
 
 def test_rec_skip_empty_description(rec_pipeline, tmp_path: Path) -> None:
     """description=空 的样本 rec 必须跳过（即使图片可推理）。"""
-    from scripts.convert_ocr_dataset_to_ppocr import process_rec_sample
+    from scripts.data.convert_ocr_dataset_to_ppocr import process_rec_sample
 
     root = tmp_path / "rec_skip"
     p = root / "side" / "X1" / "crop_ocr"
@@ -397,8 +408,8 @@ def test_rec_skip_empty_description(rec_pipeline, tmp_path: Path) -> None:
 # resplit-only 模式单测
 # ---------------------------------------------------------------------------
 
-from scripts.convert_ocr_dataset_to_ppocr import resplit_det_split, resplit_rec_split
-from scripts.convert_ocr_dataset_to_ppocr import (
+from scripts.data.convert_ocr_dataset_to_ppocr import resplit_det_split, resplit_rec_split
+from scripts.data.convert_ocr_dataset_to_ppocr import (
     _get_mini_boxes,
     _crop_by_quad,
     _expand_box,
@@ -466,7 +477,7 @@ def test_rec_crop_matches_ppocr_api_with_mock_detection(rec_pipeline, tmp_path: 
     """
     import numpy as np
     from paddlex.inference.pipelines.components import CropByPolys
-    from scripts.convert_ocr_dataset_to_ppocr import process_rec_sample
+    from scripts.data.convert_ocr_dataset_to_ppocr import process_rec_sample
 
     # ---- 1. 构造合成图片和多边形标注（模拟手标轮廓） ----
     polygon = [[30.0, 50.0], [370.0, 40.0], [380.0, 140.0], [20.0, 150.0]]
