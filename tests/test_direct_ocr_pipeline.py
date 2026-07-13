@@ -1,3 +1,7 @@
+import os
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +9,58 @@ import cv2
 import numpy as np
 
 from vie_plugin_panel_label.panel_label_detect import OCRPipeline
+
+
+def test_ocr_pipeline_builds_onnx_models():
+    orient = MagicMock()
+    recognizer = MagicMock()
+    with (
+        patch(
+            "vie_plugin_panel_label.panel_label_detect.PanelLabelDetect"
+        ),
+        patch(
+            "vie_plugin_panel_label.panel_label_detect.PanelLabelOrientationClassifier",
+            return_value=orient,
+        ) as orient_class,
+        patch(
+            "vie_plugin_panel_label.panel_label_detect.PanelLabelTextRecognizer",
+            return_value=recognizer,
+        ) as recognizer_class,
+    ):
+        pipeline = OCRPipeline("det.onnx", "ori.onnx", "rec.onnx")
+
+    assert pipeline.text_orient_model is orient
+    assert pipeline.text_rec_model is recognizer
+    orient_class.assert_called_once_with("ori.onnx", "ori/inference.yml")
+    recognizer_class.assert_called_once_with(
+        "rec.onnx", "rec/inference.yml", input_shape=None
+    )
+
+
+def test_plugin_imports_without_paddle():
+    plugin_root = Path(__file__).resolve().parents[1]
+    repository_root = plugin_root.parents[1]
+    code = """
+import importlib
+import sys
+sys.modules['paddleocr'] = None
+sys.modules['paddlex'] = None
+assert importlib.import_module('vie_plugin_panel_label.plugin')
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(plugin_root), str(repository_root), env.get("PYTHONPATH", "")]
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def make_pipeline():

@@ -8,15 +8,16 @@
 '''
 
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
-from paddleocr import TextLineOrientationClassification, TextRecognition
 
 from services.yolo import YoloOnnxInfer
 from utils import vision_logger
 
 from .models import PanellabelItem
+from .ocr_models import PanelLabelOrientationClassifier, PanelLabelTextRecognizer
 from .utils import Points_to_Mask, dedup_overlapping_polygons
 
 
@@ -46,14 +47,18 @@ class OCRPipeline:
         # 同类实例旋转框 IoS 去重阈值（>=1 关闭），抑制同一线标的重复检测框
         self.dedup_overlap_thresh = dedup_overlap_thresh
 
-        self.text_orient_model = TextLineOrientationClassification(
-            model_name="PP-LCNet_x1_0_textline_ori",
-            model_dir=orient_model_path,
+        orient_metadata_path = Path(orient_model_path).with_suffix("") / "inference.yml"
+        self.text_orient_model = PanelLabelOrientationClassifier(
+            orient_model_path,
+            str(orient_metadata_path),
         )
 
-        self.text_rec_model = TextRecognition(
-            model_name="PP-OCRv5_server_rec",
-            model_dir=text_recognition_model_path,
+        recognition_metadata_path = (
+            Path(text_recognition_model_path).with_suffix("") / "inference.yml"
+        )
+        self.text_rec_model = PanelLabelTextRecognizer(
+            text_recognition_model_path,
+            str(recognition_metadata_path),
             input_shape=text_rec_input_shape,
         )
 

@@ -5,26 +5,8 @@
 去重基于 mask 多边形最小外接旋转矩形的"交集/较小框面积"（IoS）：
 同一线标的重复框 IoS 接近 1，相邻倾斜线标的旋转框几乎不相交。
 """
-import sys
-import types
-
 import numpy as np
 import pytest
-
-paddleocr = types.ModuleType("paddleocr")
-paddleocr.TextDetection = object
-paddleocr.TextLineOrientationClassification = object
-paddleocr.TextRecognition = object
-paddlex = types.ModuleType("paddlex")
-paddlex_inference = types.ModuleType("paddlex.inference")
-paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
-paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
-paddlex_components.CropByPolys = object
-sys.modules.setdefault("paddleocr", paddleocr)
-sys.modules.setdefault("paddlex", paddlex)
-sys.modules.setdefault("paddlex.inference", paddlex_inference)
-sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
-sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
 
 from vie_plugin_panel_label import utils as panel_utils
 from vie_plugin_panel_label.utils import dedup_overlapping_polygons, rotated_box_overlap

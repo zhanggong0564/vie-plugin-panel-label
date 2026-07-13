@@ -1,36 +1,13 @@
 """panel_label 业务逻辑单元测试"""
-import sys
-import types
 import numpy as np
 import pytest
 from unittest.mock import patch
 from schemas.exceptions import InvalidParamsError
 from schemas.inference_context import InferenceContext
 
-paddleocr = types.ModuleType("paddleocr")
-paddleocr.TextDetection = object
-paddleocr.TextLineOrientationClassification = object
-paddleocr.TextRecognition = object
-paddlex = types.ModuleType("paddlex")
-paddlex_inference = types.ModuleType("paddlex.inference")
-paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
-paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
-paddlex_components.CropByPolys = object
-sys.modules.setdefault("paddleocr", paddleocr)
-sys.modules.setdefault("paddlex", paddlex)
-sys.modules.setdefault("paddlex.inference", paddlex_inference)
-sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
-sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
-
-
 @pytest.fixture
 def api_instance(monkeypatch):
     """绕过 OCRPipeline 加载，构造 PanelLabelJudgeApi 实例"""
-    monkeypatch.setitem(sys.modules, "paddleocr", paddleocr)
-    monkeypatch.setitem(sys.modules, "paddlex", paddlex)
-    monkeypatch.setitem(sys.modules, "paddlex.inference", paddlex_inference)
-    monkeypatch.setitem(sys.modules, "paddlex.inference.pipelines", paddlex_pipelines)
-    monkeypatch.setitem(sys.modules, "paddlex.inference.pipelines.components", paddlex_components)
     with patch("vie_plugin_panel_label.business_logic.OCRPipeline"):
         from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
         from config import settings
@@ -53,8 +30,8 @@ def test_model_initialization_uses_direct_ocr_contract():
 
     pipeline.assert_called_once_with(
         "./weights/panel_label/v2/best.onnx",
-        "./weights/panel_label/v2/textline_ori_lcnet_v2",
-        "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr",
+        "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx",
+        "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx",
         0.6,
         0.8,
         0.7,

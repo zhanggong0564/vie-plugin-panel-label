@@ -1,25 +1,7 @@
 """PanelLabelJudgeApi 面板标签业务逻辑单元测试"""
-import sys
-import types
-
 import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
-
-paddleocr = types.ModuleType("paddleocr")
-paddleocr.TextDetection = object
-paddleocr.TextLineOrientationClassification = object
-paddleocr.TextRecognition = object
-paddlex = types.ModuleType("paddlex")
-paddlex_inference = types.ModuleType("paddlex.inference")
-paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
-paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
-paddlex_components.CropByPolys = object
-sys.modules.setdefault("paddleocr", paddleocr)
-sys.modules.setdefault("paddlex", paddlex)
-sys.modules.setdefault("paddlex.inference", paddlex_inference)
-sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
-sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
 
 from schemas.inference_context import InferenceContext
 from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
