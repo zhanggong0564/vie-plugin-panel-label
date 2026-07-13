@@ -12,6 +12,8 @@
 
 ### 变更
 
+- 删除失效的文本检测配置、数据字段和裁图管线，将 ROI、文字与回流裁图
+  收敛为 1:1 列表流。
 - 方向分类和文字识别统一切换至 ONNX Runtime，移除插件运行时的
   PaddleOCR/PaddleX 推理依赖。
 - 模型配置改为直接引用 `weights/panel_label/v2` 下的 ONNX 文件。
