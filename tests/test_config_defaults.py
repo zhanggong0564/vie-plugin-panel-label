@@ -1,21 +1,4 @@
 """panel_label 插件配置默认值测试（原 test/test_config.py 中的对应断言迁移而来）。"""
-import sys
-import types
-
-paddleocr = types.ModuleType("paddleocr")
-paddleocr.TextDetection = object
-paddleocr.TextLineOrientationClassification = object
-paddleocr.TextRecognition = object
-paddlex = types.ModuleType("paddlex")
-paddlex_inference = types.ModuleType("paddlex.inference")
-paddlex_pipelines = types.ModuleType("paddlex.inference.pipelines")
-paddlex_components = types.ModuleType("paddlex.inference.pipelines.components")
-paddlex_components.CropByPolys = object
-sys.modules.setdefault("paddleocr", paddleocr)
-sys.modules.setdefault("paddlex", paddlex)
-sys.modules.setdefault("paddlex.inference", paddlex_inference)
-sys.modules.setdefault("paddlex.inference.pipelines", paddlex_pipelines)
-sys.modules.setdefault("paddlex.inference.pipelines.components", paddlex_components)
 
 from vie_plugin_panel_label.config import PanelLabelConfig
 
@@ -24,6 +7,14 @@ def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
     assert cfg.model_path == "./weights/panel_label/v2/best.onnx"
     assert cfg.confThreshold == 0.6
+
+
+def test_config_points_to_onnx_models():
+    cfg = PanelLabelConfig()
+    assert cfg.orient_model_path.endswith("textline_ori_lcnet_v2.onnx")
+    assert cfg.text_recognition_model_path.endswith(
+        "PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
+    )
 
 
 def test_direct_ocr_config_has_no_text_detection_fields():
