@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vie-plugin-panel-label"
-version = "1.0.1"
+version = "1.1.0"
 description = "VIE 线标 OCR 检测插件"
 requires-python = ">=3.10"
 # 生产环境应声明依赖 "vie-framework"；in-repo demo 用 --no-deps 安装，
