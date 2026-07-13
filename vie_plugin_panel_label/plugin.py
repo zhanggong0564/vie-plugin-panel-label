@@ -13,6 +13,7 @@ from typing import Any, Optional
 import numpy as np
 
 from routers.base_router import BaseRouter, BackflowTarget, UNKNOWN_MODEL_DIR
+from routers.backflow_service import BackflowService
 from schemas.data_base import InputParamsBusiness
 from .schemas import PanelLabelRequest
 from . import business_logic  # noqa: F401  导入即触发 @detection_factory.register("panel_label")
@@ -34,13 +35,13 @@ class PanelLabelRouter(BaseRouter):
             仍为空回退 _unknown_model；不再从文件名解析型号
           - 落盘文件名 = 原始文件名去扩展名后最后一个 '-' 后的片段（通常为时间戳）
         """
-        safe_filename = self._safe_client_filename(original_filename)
+        safe_filename = BackflowService.safe_client_filename(original_filename)
         stem = os.path.splitext(safe_filename)[0] or safe_filename
         # 在去扩展名的 stem 上切首段，避免无 '-' 文件名把扩展名带进场景目录
         scene = stem.split("-", 1)[0] or self.detector_type
         save_stem = stem.rsplit("-", 1)[-1] or stem
         model_dir = (
-            self._sanitize_dir_name(fallback_product_type)
+            BackflowService.sanitize_dir_name(fallback_product_type)
             if fallback_product_type
             else UNKNOWN_MODEL_DIR
         )

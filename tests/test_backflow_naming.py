@@ -57,7 +57,11 @@ def _make_request(product_type="", ai_param_value=None):
     payload = {
         "product": "p",
         "type": "t",
-        "modelParams": {"product_type": product_type, "line_order": "TK2-1,TK2-2"},
+        "modelParams": {
+            "product_type": product_type,
+            "line_order": "TK2-1,TK2-2",
+            "guideline_coordinates": [0, 0, 100, 100],
+        },
     }
     if ai_param_value is not None:
         payload["AICameraModel"] = [
