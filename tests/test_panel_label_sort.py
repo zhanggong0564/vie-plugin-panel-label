@@ -74,6 +74,49 @@ def test_qf2_rows_real_coords():
     assert _order_names(named_pts, get_sort_mode("QF2")) == _pt.PRODUCT_TYPE["QF2"]
 
 
+def test_xb3_rows_real_coords():
+    """XB3：上下两排线标按行优先排序，避免默认 PCA 顺序错乱。"""
+    named_pts = [
+        ("FU31-1/DC+", 0.275, 0.27),
+        ("FU32-1/DC-1", 0.364, 0.23),
+        ("FU37-1/T1-230V", 0.453, 0.25),
+        ("FU38-1/T1-390V", 0.526, 0.26),
+        ("XB3-1A/PE-24V", 0.599, 0.36),
+        ("XB3-2A/PD-J1-8", 0.654, 0.36),
+        ("XB3-5A/PE-24VGND", 0.687, 0.36),
+        ("XB3-6A/PD-J1-4", 0.710, 0.36),
+        ("FU29-1/KM3-1", 0.807, 0.28),
+        ("FU30-1/KM3-3", 0.854, 0.28),
+        ("FU31-2/PD-J11-8", 0.246, 0.85),
+        ("FU32-2/PE-J4-1", 0.336, 0.86),
+        ("FU37-2/PD-J9-3", 0.400, 0.84),
+        ("FU38-2/PE-J6-1", 0.478, 0.84),
+        ("FU29-2/QF1-6", 0.805, 0.87),
+        ("FU30-2/QF1-4", 0.879, 0.87),
+    ]
+    random.seed(7)
+    random.shuffle(named_pts)
+    assert get_sort_mode("XB3") == "rows:2"
+    assert _order_names(named_pts, get_sort_mode("XB3")) == [
+        "FU31-1/DC+",
+        "FU32-1/DC-1",
+        "FU37-1/T1-230V",
+        "FU38-1/T1-390V",
+        "XB3-1A/PE-24V",
+        "XB3-2A/PD-J1-8",
+        "XB3-5A/PE-24VGND",
+        "XB3-6A/PD-J1-4",
+        "FU29-1/KM3-1",
+        "FU30-1/KM3-3",
+        "FU31-2/PD-J11-8",
+        "FU32-2/PE-J4-1",
+        "FU37-2/PD-J9-3",
+        "FU38-2/PE-J6-1",
+        "FU29-2/QF1-6",
+        "FU30-2/QF1-4",
+    ]
+
+
 def test_tcu_rows_top_pair_height_jitter():
     """TCU：rows:2 —— 顶部电源 2 根 + 底部 Reader/DO 8 根。
 
