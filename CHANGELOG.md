@@ -3,6 +3,13 @@
 本插件变更记录遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)
 规范，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 变更
+
+- 面板标签分割检测默认模型由 YOLO `best.onnx` 切换至
+  `rfdetr-seg-nano.onnx`；OCR、去重、排序和 API 响应契约保持不变。
+
 ## [1.1.1] - 2026-07-14
 
 ### 修复

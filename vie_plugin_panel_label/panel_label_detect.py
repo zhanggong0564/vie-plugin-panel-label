@@ -13,7 +13,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from services.yolo import YoloOnnxInfer
+from services.rfdetr import RFDetrOnnxInfer
 from utils import vision_logger
 
 from .models import PanellabelItem
@@ -21,9 +21,9 @@ from .ocr_models import PanelLabelOrientationClassifier, PanelLabelTextRecognize
 from .utils import Points_to_Mask, dedup_overlapping_polygons
 
 
-class PanelLabelDetect(YoloOnnxInfer):
+class PanelLabelDetect(RFDetrOnnxInfer):
     def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="seg"):
-        super().__init__(model_path, 2, confThreshold, nmsThreshold, task)
+        super().__init__(model_path, 2, confThreshold, task)
         self.id2name = {
             0: "line",
             1: "QFU",

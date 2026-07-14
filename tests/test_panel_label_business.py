@@ -29,7 +29,7 @@ def test_model_initialization_uses_direct_ocr_contract():
         PanelLabelJudgeApi(settings)
 
     pipeline.assert_called_once_with(
-        "./weights/panel_label/v2/best.onnx",
+        "./weights/panel_label/v2/rfdetr-seg-nano.onnx",
         "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx",
         "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx",
         0.6,

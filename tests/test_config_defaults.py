@@ -1,12 +1,18 @@
 """panel_label 插件配置默认值测试（原 test/test_config.py 中的对应断言迁移而来）。"""
 
 from vie_plugin_panel_label.config import PanelLabelConfig
+from vie_plugin_panel_label.panel_label_detect import PanelLabelDetect
+from services.rfdetr import RFDetrOnnxInfer
 
 
 def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
-    assert cfg.model_path == "./weights/panel_label/v2/best.onnx"
+    assert cfg.model_path == "./weights/panel_label/v2/rfdetr-seg-nano.onnx"
     assert cfg.confThreshold == 0.6
+
+
+def test_panel_label_detect_uses_rfdetr_base():
+    assert issubclass(PanelLabelDetect, RFDetrOnnxInfer)
 
 
 def test_config_points_to_onnx_models():
