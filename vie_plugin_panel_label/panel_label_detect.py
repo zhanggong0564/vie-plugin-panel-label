@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-05-06 09:02:18
+@LastEditTime : 2026-07-14 11:07:37
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from services.rfdetr import RFDetrOnnxInfer
+from services.yolo import YoloOnnxInfer
 from utils import vision_logger
 
 from .models import PanellabelItem
@@ -21,9 +22,9 @@ from .ocr_models import PanelLabelOrientationClassifier, PanelLabelTextRecognize
 from .utils import Points_to_Mask, dedup_overlapping_polygons
 
 
-class PanelLabelDetect(RFDetrOnnxInfer):
+class PanelLabelDetect(YoloOnnxInfer):
     def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="seg"):
-        super().__init__(model_path, 2, confThreshold, task)
+        super().__init__(model_path, 2, confThreshold, nmsThreshold, task)
         self.id2name = {
             0: "line",
             1: "QFU",
@@ -53,9 +54,7 @@ class OCRPipeline:
             str(orient_metadata_path),
         )
 
-        recognition_metadata_path = (
-            Path(text_recognition_model_path).with_suffix("") / "inference.yml"
-        )
+        recognition_metadata_path = Path(text_recognition_model_path).with_suffix("") / "inference.yml"
         self.text_rec_model = PanelLabelTextRecognizer(
             text_recognition_model_path,
             str(recognition_metadata_path),
@@ -69,19 +68,14 @@ class OCRPipeline:
         orient_results = list(self.text_orient_model.predict(crops))
         if len(orient_results) != len(crops):
             raise ValueError(
-                f"orientation result count {len(orient_results)} does not match "
-                f"crop count {len(crops)}"
+                f"orientation result count {len(orient_results)} does not match " f"crop count {len(crops)}"
             )
         rotated = []
         uncertain = []
         for index, (crop_image, result) in enumerate(zip(crops, orient_results)):
             angle = int(result["class_ids"][0])
             score = float(result["scores"][0])
-            rotated.append(
-                cv2.rotate(crop_image, cv2.ROTATE_180)
-                if angle == 1
-                else crop_image
-            )
+            rotated.append(cv2.rotate(crop_image, cv2.ROTATE_180) if angle == 1 else crop_image)
             if score < self.text_orient_score_thresh:
                 uncertain.append(index)
         return rotated, uncertain
@@ -91,25 +85,18 @@ class OCRPipeline:
         results = list(self.text_rec_model.predict(final_crops))
         if len(results) != len(final_crops):
             raise ValueError(
-                f"recognition result count {len(results)} does not match "
-                f"crop count {len(final_crops)}"
+                f"recognition result count {len(results)} does not match " f"crop count {len(final_crops)}"
             )
         if not uncertain_indices:
             return final_crops, results
-        flipped = [
-            cv2.rotate(final_crops[index], cv2.ROTATE_180)
-            for index in uncertain_indices
-        ]
+        flipped = [cv2.rotate(final_crops[index], cv2.ROTATE_180) for index in uncertain_indices]
         flipped_results = list(self.text_rec_model.predict(flipped))
         if len(flipped_results) != len(flipped):
             raise ValueError(
-                f"fallback recognition result count {len(flipped_results)} "
-                f"does not match crop count {len(flipped)}"
+                f"fallback recognition result count {len(flipped_results)} " f"does not match crop count {len(flipped)}"
             )
         for position, index in enumerate(uncertain_indices):
-            if float(flipped_results[position]["rec_score"]) > float(
-                results[index]["rec_score"]
-            ):
+            if float(flipped_results[position]["rec_score"]) > float(results[index]["rec_score"]):
                 final_crops[index] = flipped[position]
                 results[index] = flipped_results[position]
         return final_crops, results
@@ -121,11 +108,7 @@ class OCRPipeline:
             if isinstance(text, list):
                 text = text[0] if text else ""
             score = float(result["rec_score"])
-            texts.append(
-                text
-                if text and text.strip() and score >= self.text_rec_score_thresh
-                else None
-            )
+            texts.append(text if text and text.strip() and score >= self.text_rec_score_thresh else None)
         return texts
 
     def infer(self, image) -> PanellabelItem:
@@ -153,9 +136,7 @@ class OCRPipeline:
         texts = []
         if mask_rois:
             rotated_crops, uncertain_indices = self._orient_crops(list(mask_rois))
-            text_crops, rec_results = self._recognize_with_fallback(
-                rotated_crops, uncertain_indices
-            )
+            text_crops, rec_results = self._recognize_with_fallback(rotated_crops, uncertain_indices)
             texts = self._extract_texts(rec_results)
 
         end = time.time()
