@@ -1,6 +1,7 @@
 """ONNX OCR adapters must reproduce PaddleOCR 3.4.0 preprocessing."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -158,6 +159,20 @@ def test_recognition_preserves_explicit_falsey_runner(metadata_files):
     )
 
     assert recognizer.runner is runner
+
+
+def test_recognition_default_runner_uses_sequential_execution(metadata_files):
+    _, recognition = metadata_files
+    runner = StubRunner()
+
+    with patch(
+        "vie_plugin_panel_label.ocr_models.OnnxRuntimeRunner",
+        return_value=runner,
+    ) as factory:
+        recognizer = PanelLabelTextRecognizer("recognition.onnx", str(recognition))
+
+    assert recognizer.runner is runner
+    factory.assert_called_once_with("recognition.onnx", execution_mode="sequential")
 
 
 def test_recognition_preprocess_matches_paddleocr_dynamic_width(metadata_files):
@@ -327,7 +342,7 @@ def test_recognition_predict_preserves_ctc_result_contract(metadata_files):
     ]
 
 
-def test_recognition_predict_runs_each_crop_at_its_own_dynamic_width(
+def test_recognition_predict_batches_crops_on_a_shared_dynamic_canvas(
     metadata_files,
 ):
     _, recognition = metadata_files
@@ -340,9 +355,9 @@ def test_recognition_predict_runs_each_crop_at_its_own_dynamic_width(
 
     assert recognizer.predict([narrow, wide]) == [
         {"rec_text": "0", "rec_score": 1.0},
-        {"rec_text": "1", "rec_score": 1.0},
+        {"rec_text": "0", "rec_score": 1.0},
     ]
-    assert runner.input_shapes == [(1, 3, 48, 320), (1, 3, 48, 321)]
+    assert runner.input_shapes == [(2, 3, 48, 321)]
 
 
 def test_recognition_predict_empty_input_does_not_call_runner(metadata_files):

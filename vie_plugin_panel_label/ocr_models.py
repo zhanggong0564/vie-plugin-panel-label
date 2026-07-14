@@ -177,7 +177,9 @@ class PanelLabelTextRecognizer(BaseCtcRecognitionPipeline):
             input_height = input_shape[1]
             max_width = input_shape[2]
         selected_runner = (
-            runner if runner is not None else OnnxRuntimeRunner(model_path)
+            runner
+            if runner is not None
+            else OnnxRuntimeRunner(model_path, execution_mode="sequential")
         )
         if selected_runner.output_infos:
             output_shape = selected_runner.output_infos[0].shape
@@ -196,11 +198,8 @@ class PanelLabelTextRecognizer(BaseCtcRecognitionPipeline):
         )
 
     def predict(self, images: Sequence[np.ndarray]) -> list[dict[str, str | float]]:
-        """Match PaddleX's default one-crop text-recognition sampler."""
-        results = []
-        for image in images:
-            results.extend(super().predict([image]))
-        return results
+        """Recognize one ROI batch in a single backend invocation."""
+        return super().predict(images)
 
     def _target_width(self, images: Sequence[np.ndarray]) -> int:
         if self.static_input_shape is None:
