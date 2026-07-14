@@ -177,10 +177,15 @@ def run_single(detector, image_path, product_type, rule, save_rec_hard=None):
             print(f"已落盘 {n} 条识别错误样本到 {save_rec_hard}")
 
 
-def run_batch(detector, data_dir, rule, vis_dir, save_rec_hard=None):
+def run_batch(detector, data_dir, rule, vis_dir, vis_mode="all", output_json=None, save_rec_hard=None):
+    import time
+    from datetime import datetime
+
+    start_time = time.time()
     data_dir = Path(data_dir)
     vis_dir = Path(vis_dir)
-    vis_dir.mkdir(parents=True, exist_ok=True)
+    if vis_mode != "none":
+        vis_dir.mkdir(parents=True, exist_ok=True)
     # 自动识别：若 data_dir 下直接有 *.jpg，视作单个型号（型号名=目录名）；
     # 否则按「父目录」遍历各子目录为不同型号。
     if next(data_dir.glob("*.jpg"), None) is not None:
@@ -197,6 +202,7 @@ def run_batch(detector, data_dir, rule, vis_dir, save_rec_hard=None):
     print(f"检测到 {len(product_types)} 个型号，共 {total_imgs} 张图: {', '.join(product_types)}", flush=True)
 
     summary = {}
+    image_details = []  # 用于 JSON 输出
     # 外层按型号、内层按图片各一条进度条；tqdm 写 stderr 且自带刷新，管道下也实时可见
     for pt in tqdm(product_types, desc="型号", unit="型号", position=0):
         imgs = img_lists[pt]
@@ -210,13 +216,23 @@ def run_batch(detector, data_dir, rule, vis_dir, save_rec_hard=None):
             item, result = detect(detector, image, pt, rule)
             ok = bool(result.status) if result is not None else False
             positive += ok
-            vis_dst_path = str(vis_dir / f"{pt}_{ip.stem}_res.jpg")
-            cv2.imwrite(vis_dst_path, visualize(image, item, result, pt))
+
+            # 根据 vis_mode 决定是否生成可视化
+            if vis_mode == "all" or (vis_mode == "failed" and not ok):
+                vis_dst_path = str(vis_dir / f"{pt}_{ip.stem}_res.jpg")
+                cv2.imwrite(vis_dst_path, visualize(image, item, result, pt))
+
             if save_rec_hard:
                 save_rec_hard_samples(save_rec_hard, f"{pt}_{ip.stem}", item, result, pt)
             if not ok:
-                tqdm.write(f"  FAIL: {ip} ,vis:{vis_dst_path}")
+                vis_info = f",vis:{vis_dir / f'{pt}_{ip.stem}_res.jpg'}" if vis_mode != "none" else ""
+                tqdm.write(f"  FAIL: {ip}{vis_info}")
             bar.set_postfix_str(f"OK {positive}/{bar.n + 1}")
+
+            # 收集图片详情用于 JSON 输出
+            if output_json:
+                image_details.append({"file": ip.name, "status": ok})
+
         summary[pt] = (positive, len(imgs))
         tqdm.write(f"[{pt}] 正确 {positive}/{len(imgs)} = {positive / max(len(imgs), 1):.2%}")
 
@@ -230,7 +246,39 @@ def run_batch(detector, data_dir, rule, vis_dir, save_rec_hard=None):
         tot_t += t
     print("-" * 50)
     print(f"{'总计':<20}{f'{tot_p}/{tot_t}':>14}{tot_p / max(tot_t, 1):>11.2%}")
-    print(f"可视化结果输出目录: {vis_dir}")
+    if vis_mode != "none":
+        print(f"可视化结果输出目录: {vis_dir}")
+
+    # 输出 JSON 格式统计结果
+    if output_json:
+        duration = time.time() - start_time
+        # 对于单型号模式，使用型号名；多型号模式记录总体统计
+        if len(product_types) == 1:
+            product_type = product_types[0]
+            positive, total = summary[product_type]
+            output_data = {
+                "product_type": product_type,
+                "pass": positive,
+                "total": total,
+                "rate": positive / max(total, 1),
+                "images": image_details,
+                "timestamp": datetime.now().isoformat(),
+                "duration_seconds": duration,
+            }
+        else:
+            # 多型号模式，输出所有型号汇总
+            output_data = {
+                "product_types": product_types,
+                "summary": {pt: {"pass": p, "total": t, "rate": p / max(t, 1)} for pt, (p, t) in summary.items()},
+                "total_pass": tot_p,
+                "total_images": tot_t,
+                "total_rate": tot_p / max(tot_t, 1),
+                "timestamp": datetime.now().isoformat(),
+                "duration_seconds": duration,
+            }
+
+        with open(output_json, "w", encoding="utf-8") as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
 
 
 def main():
@@ -255,6 +303,17 @@ def main():
     )
     ap.add_argument("--vis-dir", default="output/panel_label_vis", help="批量模式可视化输出目录")
     ap.add_argument(
+        "--vis-mode",
+        choices=["all", "failed", "none"],
+        default="all",
+        help="可视化模式: all=所有图片, failed=仅失败图片, none=不生成可视化",
+    )
+    ap.add_argument(
+        "--output-json",
+        metavar="PATH",
+        help="输出 JSON 格式统计结果到指定文件（便于程序解析）",
+    )
+    ap.add_argument(
         "--save-rec-hard",
         metavar="DIR",
         default=None,
@@ -267,7 +326,15 @@ def main():
 
     detector = detection_factory.get_scenarios("panel_label")
     if args.batch:
-        run_batch(detector, args.batch, rule, args.vis_dir, save_rec_hard=args.save_rec_hard)
+        run_batch(
+            detector,
+            args.batch,
+            rule,
+            args.vis_dir,
+            vis_mode=args.vis_mode,
+            output_json=args.output_json,
+            save_rec_hard=args.save_rec_hard,
+        )
     else:
         run_single(detector, args.image, args.product_type, rule, save_rec_hard=args.save_rec_hard)
 
