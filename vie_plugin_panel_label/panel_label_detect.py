@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-02-26 09:20:56
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-07-14 11:07:37
+@LastEditTime : 2026-07-15 10:00:12
 @FilePath     : panel_label_detect.py
 @Description  : 面板标签检测
 '''
@@ -22,9 +22,9 @@ from .ocr_models import PanelLabelOrientationClassifier, PanelLabelTextRecognize
 from .utils import Points_to_Mask, dedup_overlapping_polygons
 
 
-class PanelLabelDetect(YoloOnnxInfer):
+class PanelLabelDetect(RFDetrOnnxInfer):
     def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="seg"):
-        super().__init__(model_path, 2, confThreshold, nmsThreshold, task)
+        super().__init__(model_path, 2, confThreshold, task)
         self.id2name = {
             0: "line",
             1: "QFU",
