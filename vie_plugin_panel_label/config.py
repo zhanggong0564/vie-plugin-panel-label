@@ -2,8 +2,8 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 08:01:03
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-04-22 09:50:46
-@FilePath     : panel_label_config.py
+@LastEditTime : 2026-07-15 10:00:04
+@FilePath     : config.py
 @Description  :
 '''
 
@@ -30,7 +30,7 @@ def _env_float(name: str, default: float) -> float:
 
 
 class PanelLabelConfig:
-    model_path = "./weights/panel_label/v2/best.onnx"
+    model_path = "./weights/panel_label/v2/rfdetr-seg-nano.onnx"
     orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx"
     text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
     confThreshold = 0.6
@@ -47,7 +47,7 @@ class PanelLabelConfig:
     def __init__(self):
         # guideline 引导框 ROI 过滤开关：默认开启，默认 API 契约要求请求携带
         # guideline_coordinates；特殊兼容部署可设 PANEL_LABEL_GUIDELINE_FILTER=false 关闭。
-        self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", True)
+        self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", False)
         # 检测实例去重阈值（旋转框交集/较小框面积）：同一线标的重复框（全长框+半截框）
         # 轴对齐 NMS 抑制不掉，超过该重叠度只保留高置信度者；设 >=1 关闭去重。
         self.dedup_overlap_thresh = _env_float("PANEL_LABEL_DEDUP_OVERLAP", 0.6)
