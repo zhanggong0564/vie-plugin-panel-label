@@ -7,8 +7,19 @@
 
 ### 变更
 
+- 方向分类与 CTC 识别改为消费框架类型化结果；OCR pipeline 显式接收模型 metadata
+  路径，模型对象不再持有或接收仅供 runner 加载的 ONNX 路径。
+- 场景注册切换至框架 `ScenarioRegistry`，保持检测、方向仲裁、文字识别和 API
+  响应行为不变。
+- 检测、方向分类和文字识别 runner 改为由场景业务层统一创建并注入；仅检测响应
+  TensorRT 场景配置，三个子模型支持随服务关闭统一释放，初始化失败会回滚已创建资源。
 - 面板标签分割检测默认模型由 YOLO `best.onnx` 切换至
   `rfdetr-seg-nano.onnx`；OCR、去重、排序和 API 响应契约保持不变。
+- RF-DETR 检测支持按场景选择 TensorRT runner，并允许通过环境变量指定本地
+  engine；默认使用同名 strict-FP32 `.fp32.engine`，TensorRT 初始化回退由框架统一
+  处理，方向分类与文字识别继续使用 ONNX。
+- 新增 10 张真实样本 TensorRT/ONNX 分阶段开发对比脚本，记录输入摘要、原始输出
+  误差、候选 query 和最终 box/mask/score 指标，并以退出码标识验收结果。
 
 ## [1.1.1] - 2026-07-14
 
