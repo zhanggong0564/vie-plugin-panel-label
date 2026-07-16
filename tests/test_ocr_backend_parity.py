@@ -13,7 +13,8 @@ import cv2
 import numpy as np
 import pytest
 
-from services.base import OnnxRuntimeRunner
+from services.base import ClassificationResult, CtcRecognitionResult
+from services.inference import OnnxRuntimeOptions, OnnxRuntimeRunner
 from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
 from vie_plugin_panel_label.panel_label_detect import (
     OCRPipeline,
@@ -138,7 +139,10 @@ class PaddleOrientationReference:
             [logits], topk=1
         )
         results = [
-            {"class_ids": ids.tolist(), "scores": row_scores.tolist()}
+            ClassificationResult(
+                class_id=int(ids[0]),
+                score=float(row_scores[0]),
+            )
             for ids, row_scores in zip(class_ids, scores)
         ]
         self.result_cache.update(zip(keys, results))
@@ -202,7 +206,10 @@ class PaddleRecognitionReference:
                 wh_ratio_list=[ratio],
                 max_wh_ratio=max(320 / 48, ratio),
             )
-            result = {"rec_text": texts[0], "rec_score": float(scores[0])}
+            result = CtcRecognitionResult(
+                text=texts[0],
+                score=float(scores[0]),
+            )
             self.result_cache[key] = result
             results.append(result)
         return results
@@ -232,10 +239,10 @@ class CachedOnnxOrientation:
             _, logits = self.raw(images)
             class_ids = logits.argmax(axis=1)
             results = [
-                {
-                    "class_ids": [int(class_id)],
-                    "scores": [float(logits[index, class_id])],
-                }
+                ClassificationResult(
+                    class_id=int(class_id),
+                    score=float(logits[index, class_id]),
+                )
                 for index, class_id in enumerate(class_ids)
             ]
             self.result_cache.update(zip(keys, results))
@@ -396,7 +403,10 @@ def test_comparison_diagnostics_reject_nonfinite_and_locate_maximum():
 
 def test_paddle_and_onnx_are_strictly_aligned_on_fixed_real_samples():
     samples = select_samples(SAMPLE_ROOT)
-    detect_path = _require_path(WEIGHT_ROOT / "best.onnx", "detection ONNX model")
+    detect_path = _require_path(
+        WEIGHT_ROOT / "rfdetr-seg-nano.onnx",
+        "detection ONNX model",
+    )
     orient_onnx = _require_path(
         WEIGHT_ROOT / "textline_ori_lcnet_v2.onnx", "orientation ONNX model"
     )
@@ -416,27 +426,46 @@ def test_paddle_and_onnx_are_strictly_aligned_on_fixed_real_samples():
     paddle_recognition = PaddleRecognitionReference(rec_paddle)
     onnx_orientation = CachedOnnxOrientation(
         PanelLabelOrientationClassifier(
-            str(orient_onnx),
             str(orient_paddle / "inference.yml"),
             runner=OnnxRuntimeRunner(
                 str(orient_onnx),
-                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-                warmup=False,
+                OnnxRuntimeOptions(
+                    providers=(
+                        "CUDAExecutionProvider",
+                        "CPUExecutionProvider",
+                    ),
+                    warmup=False,
+                ),
             ),
         ),
     )
     onnx_recognition = CachedOnnxRecognition(
         PanelLabelTextRecognizer(
-            str(rec_onnx),
             str(rec_paddle / "inference.yml"),
             runner=OnnxRuntimeRunner(
                 str(rec_onnx),
-                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                OnnxRuntimeOptions(
+                    providers=(
+                        "CUDAExecutionProvider",
+                        "CPUExecutionProvider",
+                    ),
+                    warmup=False,
+                ),
+            ),
+        ),
+    )
+    detector = PanelLabelDetect(
+        runner=OnnxRuntimeRunner(
+            str(detect_path),
+            OnnxRuntimeOptions(
+                providers=(
+                    "CUDAExecutionProvider",
+                    "CPUExecutionProvider",
+                ),
                 warmup=False,
             ),
         ),
     )
-    detector = PanelLabelDetect(str(detect_path))
     assert onnx_orientation.model.runner.providers[0] == "CUDAExecutionProvider"
     assert onnx_recognition.model.runner.providers[0] == "CUDAExecutionProvider"
     assert detector.runner.providers[0] == "CUDAExecutionProvider"
@@ -542,10 +571,10 @@ def test_paddle_and_onnx_are_strictly_aligned_on_fixed_real_samples():
                 zip(paddle_orient_results, onnx_orient_results)
             ):
                 diagnostics["orientation_class_mismatch"] += int(
-                    onnx_result["class_ids"] != paddle_result["class_ids"]
+                    onnx_result.class_id != paddle_result.class_id
                 )
                 error, nonfinite = _scalar_error(
-                    onnx_result["scores"][0], paddle_result["scores"][0]
+                    onnx_result.score, paddle_result.score
                 )
                 diagnostics["orientation_score_nonfinite"] += int(nonfinite)
                 diagnostics["orientation_score_threshold_exceeded"] += int(
@@ -564,7 +593,7 @@ def test_paddle_and_onnx_are_strictly_aligned_on_fixed_real_samples():
                     None,
                 )
                 orientation_matches += int(
-                    onnx_result["class_ids"] == paddle_result["class_ids"]
+                    onnx_result.class_id == paddle_result.class_id
                 )
 
             rotated, uncertain = _pipeline(
@@ -634,10 +663,10 @@ def test_paddle_and_onnx_are_strictly_aligned_on_fixed_real_samples():
             ):
                 recognition_count += 1
                 diagnostics["recognition_text_mismatch"] += int(
-                    onnx_result["rec_text"] != paddle_result["rec_text"]
+                    onnx_result.text != paddle_result.text
                 )
                 error, nonfinite = _scalar_error(
-                    onnx_result["rec_score"], paddle_result["rec_score"]
+                    onnx_result.score, paddle_result.score
                 )
                 diagnostics["recognition_score_nonfinite"] += int(nonfinite)
                 diagnostics["recognition_score_threshold_exceeded"] += int(
@@ -656,7 +685,7 @@ def test_paddle_and_onnx_are_strictly_aligned_on_fixed_real_samples():
                     None,
                 )
                 text_matches += int(
-                    onnx_result["rec_text"] == paddle_result["rec_text"]
+                    onnx_result.text == paddle_result.text
                 )
 
         paddle_pipeline = _pipeline(

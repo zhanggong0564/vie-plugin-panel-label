@@ -2,7 +2,7 @@
 
 from vie_plugin_panel_label.config import PanelLabelConfig
 from vie_plugin_panel_label.panel_label_detect import PanelLabelDetect
-from services.rfdetr import RFDetrOnnxInfer
+from services.rfdetr import RFDetrInfer
 
 
 def test_panel_label_config_defaults():
@@ -12,7 +12,7 @@ def test_panel_label_config_defaults():
 
 
 def test_panel_label_detect_uses_rfdetr_base():
-    assert issubclass(PanelLabelDetect, RFDetrOnnxInfer)
+    assert issubclass(PanelLabelDetect, RFDetrInfer)
 
 
 def test_config_points_to_onnx_models():

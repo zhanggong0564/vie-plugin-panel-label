@@ -7,20 +7,27 @@
 @Description  :
 '''
 
+from pathlib import Path
+
 from .config import PanelLabelConfig
 from .panel_label_detect import OCRPipeline
 from .models import ErrorType, PanelInfo, PanellabelItem
 from schemas import MoMResult, DetectionItem
 from schemas.exceptions import InvalidParamsError, ModelInferenceError
-from services.api import detection_factory
+from services.scenario_registry import scenario_registry
 from services.base import BusinessLogicBase
+from services.inference import (
+    OnnxRuntimeOptions,
+    RunnerSpec,
+    create_inference_runner,
+)
 from utils import vision_logger
 from .utils import polygon_overlap_ratio
 from .ordering import order_panel_item
 from .product_type import get_sort_mode
 
 
-@detection_factory.register("panel_label")
+@scenario_registry.register("panel_label")
 class PanelLabelJudgeApi(BusinessLogicBase):
 
     def __init__(self, settings):
@@ -35,19 +42,66 @@ class PanelLabelJudgeApi(BusinessLogicBase):
 
     def _initialize_model(self, settings):
         cfg = PanelLabelConfig()
+        created_runners = []
         try:
+            onnx_options = OnnxRuntimeOptions.from_settings(settings)
+            detection_runner = create_inference_runner(
+                RunnerSpec(
+                    backend="onnx",
+                    scenario="panel_label",
+                    onnx_path=cfg.model_path,
+                ),
+                onnx_options,
+            )
+            created_runners.append(detection_runner)
+            orientation_runner = create_inference_runner(
+                RunnerSpec(
+                    backend="onnx",
+                    scenario="panel_label",
+                    onnx_path=cfg.orient_model_path,
+                ),
+                onnx_options,
+            )
+            created_runners.append(orientation_runner)
+            recognition_runner = create_inference_runner(
+                RunnerSpec(
+                    backend="onnx",
+                    scenario="panel_label",
+                    onnx_path=cfg.text_recognition_model_path,
+                ),
+                OnnxRuntimeOptions.from_settings(
+                    settings, execution_mode="sequential"
+                ),
+            )
+            created_runners.append(recognition_runner)
+            orientation_metadata_path = (
+                Path(cfg.orient_model_path).with_suffix("") / "inference.yml"
+            )
+            recognition_metadata_path = (
+                Path(cfg.text_recognition_model_path).with_suffix("")
+                / "inference.yml"
+            )
             self.detector = OCRPipeline(
-                cfg.model_path,
-                cfg.orient_model_path,
-                cfg.text_recognition_model_path,
+                str(orientation_metadata_path),
+                str(recognition_metadata_path),
                 cfg.confThreshold,
                 cfg.nmsThreshold,
                 cfg.text_rec_score_thresh,
                 cfg.text_orient_score_thresh,
                 cfg.text_rec_input_shape,
                 dedup_overlap_thresh=cfg.dedup_overlap_thresh,
+                detection_runner=detection_runner,
+                orientation_runner=orientation_runner,
+                recognition_runner=recognition_runner,
             )
         except Exception as e:
+            for runner in created_runners:
+                try:
+                    runner.close()
+                except Exception as close_error:
+                    vision_logger.warning(
+                        f"panel_label 初始化回滚清理失败: {close_error}"
+                    )
             vision_logger.error(f"initialize model failed, error: {e}")
             raise ModelInferenceError(
                 "panel_label 模型加载失败",

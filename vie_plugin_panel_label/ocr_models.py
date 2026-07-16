@@ -10,8 +10,8 @@ import yaml
 from services.base import (
     BaseClassificationPipeline,
     BaseCtcRecognitionPipeline,
-    OnnxRuntimeRunner,
 )
+from services.inference import InferenceRunner
 
 
 PANEL_LABEL_CHARACTERS = (
@@ -68,7 +68,12 @@ def _three_floats(value, name: str) -> np.ndarray:
 class PanelLabelOrientationClassifier(BaseClassificationPipeline):
     """PP-LCNet text-line orientation classifier backed by ONNX Runtime."""
 
-    def __init__(self, model_path: str, metadata_path: str, runner=None) -> None:
+    def __init__(
+        self,
+        metadata_path: str,
+        *,
+        runner: InferenceRunner,
+    ) -> None:
         data = _load_metadata(metadata_path)
         resize = _transform(data, "ResizeImage")
         normalize = _transform(data, "NormalizeImage")
@@ -103,10 +108,7 @@ class PanelLabelOrientationClassifier(BaseClassificationPipeline):
         self.scale = np.float32(scale)
         self.mean = mean
         self.std = std
-        selected_runner = (
-            runner if runner is not None else OnnxRuntimeRunner(model_path)
-        )
-        super().__init__(selected_runner, labels)
+        super().__init__(runner, labels)
 
     def preprocess(self, images: Sequence[np.ndarray]) -> np.ndarray:
         tensors = []
@@ -127,10 +129,10 @@ class PanelLabelTextRecognizer(BaseCtcRecognitionPipeline):
 
     def __init__(
         self,
-        model_path: str,
         metadata_path: str,
         input_shape=None,
-        runner=None,
+        *,
+        runner: InferenceRunner,
     ) -> None:
         data = _load_metadata(metadata_path)
         decode = _transform(data, "DecodeImage")
@@ -176,13 +178,8 @@ class PanelLabelTextRecognizer(BaseCtcRecognitionPipeline):
             self.static_input_shape = tuple(input_shape)
             input_height = input_shape[1]
             max_width = input_shape[2]
-        selected_runner = (
-            runner
-            if runner is not None
-            else OnnxRuntimeRunner(model_path, execution_mode="sequential")
-        )
-        if selected_runner.output_infos:
-            output_shape = selected_runner.output_infos[0].shape
+        if runner.output_infos:
+            output_shape = runner.output_infos[0].shape
             output_classes = output_shape[-1] if output_shape else None
             if (
                 isinstance(output_classes, int)
@@ -191,7 +188,7 @@ class PanelLabelTextRecognizer(BaseCtcRecognitionPipeline):
             ):
                 raise ValueError("recognition ONNX output must contain 49 classes")
         super().__init__(
-            selected_runner,
+            runner,
             characters,
             input_height=input_height,
             max_width=max_width,
