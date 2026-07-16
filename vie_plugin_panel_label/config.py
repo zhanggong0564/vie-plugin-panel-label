@@ -31,6 +31,9 @@ def _env_float(name: str, default: float) -> float:
 
 class PanelLabelConfig:
     model_path = "./weights/panel_label/v2/rfdetr-seg-nano.onnx"
+    PANEL_LABEL_TRT_ENGINE_PATH = (
+        f"{os.path.splitext(model_path)[0]}.fp32.engine"
+    )
     orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx"
     text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
     confThreshold = 0.6
@@ -45,6 +48,10 @@ class PanelLabelConfig:
     text_rec_input_shape = None
 
     def __init__(self):
+        self.PANEL_LABEL_TRT_ENGINE_PATH = os.getenv(
+            "PANEL_LABEL_TRT_ENGINE_PATH",
+            type(self).PANEL_LABEL_TRT_ENGINE_PATH,
+        )
         # guideline 引导框 ROI 过滤开关：默认开启，默认 API 契约要求请求携带
         # guideline_coordinates；特殊兼容部署可设 PANEL_LABEL_GUIDELINE_FILTER=false 关闭。
         self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", False)

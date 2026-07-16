@@ -47,9 +47,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             onnx_options = OnnxRuntimeOptions.from_settings(settings)
             detection_runner = create_inference_runner(
                 RunnerSpec(
-                    backend="onnx",
+                    backend=settings.inference_backend_for("panel_label"),
                     scenario="panel_label",
                     onnx_path=cfg.model_path,
+                    engine_path=cfg.PANEL_LABEL_TRT_ENGINE_PATH,
                 ),
                 onnx_options,
             )
