@@ -87,6 +87,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 cfg.text_orient_score_thresh,
                 cfg.text_rec_input_shape,
                 dedup_overlap_thresh=cfg.dedup_overlap_thresh,
+                cpu_fast_path=cfg.cpu_fast_path,
                 detection_runner=detection_runner,
                 orientation_runner=orientation_runner,
                 recognition_runner=recognition_runner,

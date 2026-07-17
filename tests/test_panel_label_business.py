@@ -47,6 +47,7 @@ def test_model_initialization_uses_direct_ocr_contract():
         0.9,
         None,
         dedup_overlap_thresh=0.6,
+        cpu_fast_path=True,
         detection_runner=runners[0],
         orientation_runner=runners[1],
         recognition_runner=runners[2],

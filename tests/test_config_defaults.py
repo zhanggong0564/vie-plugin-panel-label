@@ -2,7 +2,7 @@
 
 from vie_plugin_panel_label.config import PanelLabelConfig
 from vie_plugin_panel_label.panel_label_detect import PanelLabelDetect
-from services.rfdetr import RFDetrOnnxInfer
+from services.rfdetr import RFDetrInfer
 
 
 def test_panel_label_config_defaults():
@@ -11,8 +11,20 @@ def test_panel_label_config_defaults():
     assert cfg.confThreshold == 0.6
 
 
+def test_cpu_fast_path_defaults_enabled(monkeypatch):
+    monkeypatch.delenv("PANEL_LABEL_CPU_FAST_PATH", raising=False)
+
+    assert PanelLabelConfig().cpu_fast_path is True
+
+
+def test_cpu_fast_path_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("PANEL_LABEL_CPU_FAST_PATH", "false")
+
+    assert PanelLabelConfig().cpu_fast_path is False
+
+
 def test_panel_label_detect_uses_rfdetr_base():
-    assert issubclass(PanelLabelDetect, RFDetrOnnxInfer)
+    assert issubclass(PanelLabelDetect, RFDetrInfer)
 
 
 def test_config_points_to_onnx_models():
