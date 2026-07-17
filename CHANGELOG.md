@@ -7,8 +7,19 @@
 
 ### 变更
 
+- 方向分类与 CTC 识别改为消费框架类型化结果；OCR pipeline 显式接收模型 metadata
+  路径，模型对象不再持有或接收仅供 runner 加载的 ONNX 路径。
+- 场景注册切换至框架 `ScenarioRegistry`，保持检测、方向仲裁、文字识别和 API
+  响应行为不变。
+- 检测、方向分类和文字识别 ONNX runner 改为由场景业务层统一创建并注入；
+  三个子模型支持随服务关闭统一释放，初始化失败会回滚已创建资源。
 - 面板标签分割检测默认模型由 YOLO `best.onnx` 切换至
   `rfdetr-seg-nano.onnx`；OCR、去重、排序和 API 响应契约保持不变。
+- 新增默认开启的 `PANEL_LABEL_CPU_FAST_PATH`：RF-DETR 仅解码检测框局部 mask，
+  ROI 展平仅在 polygon 紧致区域内分配和计算，保持文本、类别、顺序、置信度和
+  位置反映射契约。
+- `PANEL_LABEL_CPU_FAST_PATH=false` 可同时恢复完整 mask 和旧 ROI 展平路径；
+  单候选局部处理失败时自动回退旧路径并限频记录 warning。
 
 ## [1.1.1] - 2026-07-14
 
