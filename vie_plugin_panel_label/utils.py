@@ -13,6 +13,10 @@ import cv2
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+from utils import vision_logger
+
+
+_LOCAL_ROI_FALLBACK_WARNED = False
 
 
 def _rect_long_side_angle_deg(rect):
@@ -107,6 +111,27 @@ def points_to_mask(shape_hw, points):
     return mask
 
 
+def points_to_local_mask(shape_hw, points, padding=0):
+    """Rasterize one polygon only inside its clipped bounding rectangle."""
+    image_h, image_w = shape_hw
+    pts = np.asarray(points, dtype=np.int32).reshape(-1, 2)
+    if len(pts) < 3:
+        raise ValueError("polygon must contain at least three points")
+    x, y, width, height = cv2.boundingRect(pts)
+    x1 = max(0, min(image_w, x - padding))
+    y1 = max(0, min(image_h, y - padding))
+    x2 = max(0, min(image_w, x + width + padding))
+    y2 = max(0, min(image_h, y + height + padding))
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError("polygon does not overlap the image")
+    local_mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
+    local_points = pts - np.array([x1, y1], dtype=np.int32)
+    cv2.fillPoly(local_mask, [local_points], 255)
+    if cv2.countNonZero(local_mask) == 0:
+        raise ValueError("polygon produced an empty local mask")
+    return local_mask, (x1, y1)
+
+
 def rotate_upright(img, mask):
 
     ys, xs = np.where(mask > 0)
@@ -141,6 +166,76 @@ def rotate_upright(img, mask):
     )
     # M: crop 坐标 -> img_r 坐标；offset: crop 坐标 -> 原图坐标。供 ROI 点反映射回原图用。
     return img_r, mask_r, M, (int(x_min), int(y_min))
+
+
+def rotate_polygon_upright(img, points):
+    """Rotate one polygon upright without allocating an image-sized mask."""
+    local_mask, (base_x, base_y) = points_to_local_mask(
+        img.shape[:2], points, padding=2
+    )
+    ys, xs = np.where(local_mask > 0)
+    if len(xs) == 0:
+        raise ValueError("polygon produced an empty local mask")
+    global_pixels = np.stack(
+        [xs + base_x, ys + base_y], axis=1
+    ).astype(np.float32)
+    rect = cv2.minAreaRect(global_pixels)
+    global_box = cv2.boxPoints(rect).astype(np.int32)
+    local_h, local_w = local_mask.shape
+    image_x1, image_y1 = np.min(global_box, axis=0)
+    image_x2, image_y2 = np.max(global_box, axis=0)
+    image_x1 = int(np.clip(image_x1, 0, img.shape[1]))
+    image_y1 = int(np.clip(image_y1, 0, img.shape[0]))
+    image_x2 = int(np.clip(image_x2, 0, img.shape[1]))
+    image_y2 = int(np.clip(image_y2, 0, img.shape[0]))
+    overlap_x1 = max(image_x1, base_x)
+    overlap_y1 = max(image_y1, base_y)
+    overlap_x2 = min(image_x2, base_x + local_w)
+    overlap_y2 = min(image_y2, base_y + local_h)
+    if overlap_x2 <= overlap_x1 or overlap_y2 <= overlap_y1:
+        raise ValueError("polygon has an invalid rotated bounding box")
+
+    roi = img[image_y1:image_y2, image_x1:image_x2]
+    mask_roi = np.zeros(roi.shape[:2], dtype=np.uint8)
+    source_x1 = overlap_x1 - base_x
+    source_y1 = overlap_y1 - base_y
+    source_x2 = overlap_x2 - base_x
+    source_y2 = overlap_y2 - base_y
+    target_x1 = overlap_x1 - image_x1
+    target_y1 = overlap_y1 - image_y1
+    target_x2 = overlap_x2 - image_x1
+    target_y2 = overlap_y2 - image_y1
+    mask_roi[target_y1:target_y2, target_x1:target_x2] = local_mask[
+        source_y1:source_y2, source_x1:source_x2
+    ]
+
+    (cx, cy), (rw, rh), angle = rect
+    if rw < rh:
+        angle += 90
+    cx -= image_x1
+    cy -= image_y1
+    diagonal = int(np.sqrt(rw**2 + rh**2))
+    if diagonal <= 0:
+        raise ValueError("polygon has an invalid rotated size")
+    matrix = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+    matrix[0, 2] += (diagonal - roi.shape[1]) / 2
+    matrix[1, 2] += (diagonal - roi.shape[0]) / 2
+    image_rotated = cv2.warpAffine(
+        roi,
+        matrix,
+        (diagonal, diagonal),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    mask_rotated = cv2.warpAffine(
+        mask_roi,
+        matrix,
+        (diagonal, diagonal),
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
+    return image_rotated, mask_rotated, matrix, (image_x1, image_y1)
 
 
 def smooth_1d(y, k):
@@ -222,6 +317,55 @@ def map_roi_points_to_original(tf: RoiTransform, pts) -> np.ndarray:
     return crop
 
 
+def _flatten_rotated_roi(
+    img_r,
+    mask_r,
+    matrix,
+    offset,
+    smooth,
+    sample_step,
+    border_mode,
+    return_map,
+):
+    top, bot = contour_top_bottom(mask_r)
+    top[:, 1] = smooth_1d(top[:, 1], smooth)
+    bot[:, 1] = smooth_1d(bot[:, 1], smooth)
+    top = top[::sample_step]
+    bot = bot[::sample_step]
+
+    width = len(top)
+    height = int(np.max(bot[:, 1] - top[:, 1]) * 0.8)
+    if width <= 0 or height <= 0:
+        raise ValueError("flattened ROI has an invalid size")
+
+    alpha = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, np.newaxis]
+    map_x = top[:, 0] + alpha * (bot[:, 0] - top[:, 0])
+    map_y = top[:, 1] + alpha * (bot[:, 1] - top[:, 1])
+    border = (
+        cv2.BORDER_REPLICATE
+        if border_mode == "replicate"
+        else cv2.BORDER_REFLECT_101
+    )
+    flattened = cv2.remap(
+        img_r,
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=border,
+    )
+    if not return_map:
+        return flattened, None
+    transform = RoiTransform(
+        top=np.asarray(top, dtype=np.float32),
+        bot=np.asarray(bot, dtype=np.float32),
+        H=height,
+        W=width,
+        Minv=cv2.invertAffineTransform(matrix),
+        offset=offset,
+    )
+    return flattened, transform
+
+
 def mask2roi(
     img: np.ndarray, points: np.array, smooth=21, sample_step=1, border_mode="replicate", return_maps=False
 ):
@@ -229,50 +373,76 @@ def mask2roi(
     transforms: List[Optional[RoiTransform]] = []
     for point in points:
         mask = points_to_mask(img.shape[:2], point)
-        img_r, mask_r, M, offset = rotate_upright(img, mask)
-        # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-        # mask_r = cv2.erode(mask_r, kernel, iterations=2)
-        # roi = cv2.bitwise_and(img_r, img_r, mask=mask_r)
-        ###求矩形框，crop得到roi
-        top, bot = contour_top_bottom(mask_r)
-
-        # 平滑边界，减少展平后的“波纹”
-        top[:, 1] = smooth_1d(top[:, 1], smooth)
-        bot[:, 1] = smooth_1d(bot[:, 1], smooth)
-
-        # 下采样加速
-        top = top[::sample_step]
-        bot = bot[::sample_step]
-
-        W = len(top)
-        H = int(np.max(bot[:, 1] - top[:, 1]) * 0.8)
-        # 固定H
-        # H = 256
-
-        # 构建 remap
-        map_x = np.empty((H, W), dtype=np.float32)
-        map_y = np.empty((H, W), dtype=np.float32)
-
-        a = np.linspace(0.0, 1.0, H, dtype=np.float32)[:, np.newaxis]  # (H, 1)
-        map_x = top[:, 0] + a * (bot[:, 0] - top[:, 0])  # (H, W)
-        map_y = top[:, 1] + a * (bot[:, 1] - top[:, 1])
-
-        bm = cv2.BORDER_REPLICATE if border_mode == "replicate" else cv2.BORDER_REFLECT_101
-        flat = cv2.remap(img_r, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=bm)
-        rois.append(flat)
-        # cv2.imwrite("roi.jpg", flat)
-
+        img_r, mask_r, matrix, offset = rotate_upright(img, mask)
+        flattened, transform = _flatten_rotated_roi(
+            img_r,
+            mask_r,
+            matrix,
+            offset,
+            smooth,
+            sample_step,
+            border_mode,
+            return_maps,
+        )
+        rois.append(flattened)
         if return_maps:
-            transforms.append(
-                RoiTransform(
-                    top=np.asarray(top, dtype=np.float32),
-                    bot=np.asarray(bot, dtype=np.float32),
-                    H=H,
-                    W=W,
-                    Minv=cv2.invertAffineTransform(M),
-                    offset=offset,
-                )
+            transforms.append(transform)
+
+    if return_maps:
+        return rois, transforms
+    return rois
+
+
+def _warn_local_roi_fallback_once(error):
+    global _LOCAL_ROI_FALLBACK_WARNED
+    if _LOCAL_ROI_FALLBACK_WARNED:
+        return
+    _LOCAL_ROI_FALLBACK_WARNED = True
+    vision_logger.warning(
+        "局部 ROI 展平失败，当前及后续异常 ROI 回退旧路径: {}", error
+    )
+
+
+def mask2roi_local(
+    img: np.ndarray, points: np.array, smooth=21, sample_step=1, border_mode="replicate", return_maps=False
+):
+    rois = []
+    transforms: List[Optional[RoiTransform]] = []
+    for point in points:
+        try:
+            img_r, mask_r, matrix, offset = rotate_polygon_upright(
+                img, point
             )
+            flattened, transform = _flatten_rotated_roi(
+                img_r,
+                mask_r,
+                matrix,
+                offset,
+                smooth,
+                sample_step,
+                border_mode,
+                return_maps,
+            )
+        except (ValueError, cv2.error) as exc:
+            _warn_local_roi_fallback_once(exc)
+            legacy = mask2roi(
+                img,
+                [point],
+                smooth=smooth,
+                sample_step=sample_step,
+                border_mode=border_mode,
+                return_maps=return_maps,
+            )
+            if return_maps:
+                legacy_rois, legacy_transforms = legacy
+                flattened = legacy_rois[0]
+                transform = legacy_transforms[0]
+            else:
+                flattened = legacy[0]
+                transform = None
+        rois.append(flattened)
+        if return_maps:
+            transforms.append(transform)
 
     if return_maps:
         return rois, transforms
@@ -282,7 +452,20 @@ def mask2roi(
 def Points_to_Mask(image_src, points, sort_by="y", return_maps=False):
     points_line, sorted_idx = sort_mask(image_src, points, 0.8)
     if return_maps:
-        mask_rois, transforms = mask2roi(image_src, points_line, return_maps=True)
+        mask_rois, transforms = mask2roi_local(
+            image_src, points_line, return_maps=True
+        )
+        return mask_rois, sorted_idx, transforms
+    mask_rois = mask2roi_local(image_src, points_line)
+    return mask_rois, sorted_idx
+
+
+def Points_to_Mask_legacy(image_src, points, sort_by="y", return_maps=False):
+    points_line, sorted_idx = sort_mask(image_src, points, 0.8)
+    if return_maps:
+        mask_rois, transforms = mask2roi(
+            image_src, points_line, return_maps=True
+        )
         return mask_rois, sorted_idx, transforms
     mask_rois = mask2roi(image_src, points_line)
     return mask_rois, sorted_idx

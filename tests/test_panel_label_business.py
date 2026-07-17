@@ -8,7 +8,10 @@ from schemas.inference_context import InferenceContext
 @pytest.fixture
 def api_instance(monkeypatch):
     """绕过 OCRPipeline 加载，构造 PanelLabelJudgeApi 实例"""
-    with patch("vie_plugin_panel_label.business_logic.OCRPipeline"):
+    with (
+        patch("vie_plugin_panel_label.business_logic.create_inference_runner"),
+        patch("vie_plugin_panel_label.business_logic.OCRPipeline"),
+    ):
         from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
         from config import settings
         yield PanelLabelJudgeApi(settings)
@@ -25,19 +28,29 @@ def test_model_initialization_uses_direct_ocr_contract():
     from config import settings
     from vie_plugin_panel_label.business_logic import PanelLabelJudgeApi
 
-    with patch("vie_plugin_panel_label.business_logic.OCRPipeline") as pipeline:
+    runners = [object(), object(), object()]
+    with (
+        patch(
+            "vie_plugin_panel_label.business_logic.create_inference_runner",
+            side_effect=runners,
+        ),
+        patch("vie_plugin_panel_label.business_logic.OCRPipeline") as pipeline,
+    ):
         PanelLabelJudgeApi(settings)
 
     pipeline.assert_called_once_with(
-        "./weights/panel_label/v2/rfdetr-seg-nano.onnx",
-        "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx",
-        "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx",
+        "weights/panel_label/v2/textline_ori_lcnet_v2/inference.yml",
+        "weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml",
         0.6,
         0.8,
         0.7,
         0.9,
         None,
         dedup_overlap_thresh=0.6,
+        cpu_fast_path=True,
+        detection_runner=runners[0],
+        orientation_runner=runners[1],
+        recognition_runner=runners[2],
     )
 
 

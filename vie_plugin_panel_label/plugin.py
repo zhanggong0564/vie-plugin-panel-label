@@ -16,7 +16,7 @@ from routers.base_router import BaseRouter, BackflowTarget, UNKNOWN_MODEL_DIR
 from routers.backflow_service import BackflowService
 from schemas.data_base import InputParamsBusiness
 from .schemas import PanelLabelRequest
-from . import business_logic  # noqa: F401  导入即触发 @detection_factory.register("panel_label")
+from . import business_logic  # noqa: F401  导入即触发 @scenario_registry.register("panel_label")
 
 
 class PanelLabelRouter(BaseRouter):

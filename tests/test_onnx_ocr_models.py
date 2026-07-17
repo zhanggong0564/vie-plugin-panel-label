@@ -10,7 +10,8 @@ import pytest
 import tomli
 import yaml
 
-from services.base import TensorInfo
+from services.base import CtcRecognitionResult
+from services.inference import TensorInfo
 from vie_plugin_panel_label.ocr_models import (
     PanelLabelOrientationClassifier,
     PanelLabelTextRecognizer,
@@ -114,7 +115,7 @@ def metadata_files(tmp_path: Path):
 def test_orientation_preprocess_matches_reference(metadata_files):
     orientation, _ = metadata_files
     classifier = PanelLabelOrientationClassifier(
-        "orientation.onnx", str(orientation), runner=StubRunner()
+        str(orientation), runner=StubRunner()
     )
     bgr = np.arange(31 * 79 * 3, dtype=np.uint8).reshape(31, 79, 3)
 
@@ -135,7 +136,7 @@ def test_orientation_preserves_explicit_falsey_runner(metadata_files):
     runner = FalseyRunner()
 
     classifier = PanelLabelOrientationClassifier(
-        "missing-orientation.onnx", str(orientation), runner=runner
+        str(orientation), runner=runner
     )
 
     assert classifier.runner is runner
@@ -144,7 +145,7 @@ def test_orientation_preserves_explicit_falsey_runner(metadata_files):
 def test_recognition_metadata_loads_all_48_characters(metadata_files):
     _, recognition = metadata_files
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=StubRunner()
+        str(recognition), runner=StubRunner()
     )
     assert recognizer.characters == CHARACTERS
     assert len(recognizer.characters) == 48
@@ -155,30 +156,23 @@ def test_recognition_preserves_explicit_falsey_runner(metadata_files):
     runner = FalseyRunner()
 
     recognizer = PanelLabelTextRecognizer(
-        "missing-recognition.onnx", str(recognition), runner=runner
+        str(recognition), runner=runner
     )
 
     assert recognizer.runner is runner
 
 
-def test_recognition_default_runner_uses_sequential_execution(metadata_files):
+def test_recognition_requires_an_injected_runner(metadata_files):
     _, recognition = metadata_files
-    runner = StubRunner()
 
-    with patch(
-        "vie_plugin_panel_label.ocr_models.OnnxRuntimeRunner",
-        return_value=runner,
-    ) as factory:
-        recognizer = PanelLabelTextRecognizer("recognition.onnx", str(recognition))
-
-    assert recognizer.runner is runner
-    factory.assert_called_once_with("recognition.onnx", execution_mode="sequential")
+    with pytest.raises(TypeError, match="runner"):
+        PanelLabelTextRecognizer(str(recognition))
 
 
 def test_recognition_preprocess_matches_paddleocr_dynamic_width(metadata_files):
     _, recognition = metadata_files
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=StubRunner()
+        str(recognition), runner=StubRunner()
     )
     # 48 * (643 / 96) == 321.5: Paddle floors the canvas to 321,
     # while its per-image ceil width (322) is truncated to that canvas.
@@ -196,7 +190,7 @@ def test_recognition_preprocess_matches_paddleocr_dynamic_width(metadata_files):
 def test_recognition_batch_uses_metadata_width_as_dynamic_minimum(metadata_files):
     _, recognition = metadata_files
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=StubRunner()
+        str(recognition), runner=StubRunner()
     )
     narrow = np.zeros((48, 64, 3), dtype=np.uint8)
 
@@ -230,7 +224,7 @@ def test_invalid_orientation_metadata_fails_during_initialization(
 
     with pytest.raises(ValueError, match="std"):
         PanelLabelOrientationClassifier(
-            "orientation.onnx", str(invalid), runner=StubRunner()
+            str(invalid), runner=StubRunner()
         )
 
 
@@ -253,7 +247,7 @@ def test_recognition_rejects_character_dict_other_than_scene_alphabet(
 
     with pytest.raises(ValueError, match="exact 48-character"):
         PanelLabelTextRecognizer(
-            "recognition.onnx", str(invalid), runner=StubRunner()
+            str(invalid), runner=StubRunner()
         )
 
 
@@ -264,7 +258,7 @@ def test_recognition_rejects_static_onnx_output_other_than_49_classes(
 
     with pytest.raises(ValueError, match="49 classes"):
         PanelLabelTextRecognizer(
-            "recognition.onnx", str(recognition), runner=StubRunner(50)
+            str(recognition), runner=StubRunner(50)
         )
 
 
@@ -286,7 +280,7 @@ def test_recognition_rejects_non_bgr_decode_metadata(
 
     with pytest.raises(ValueError, match="DecodeImage requires"):
         PanelLabelTextRecognizer(
-            "recognition.onnx", str(invalid), runner=StubRunner()
+            str(invalid), runner=StubRunner()
         )
 
 
@@ -299,14 +293,14 @@ def test_recognition_rejects_missing_decode_metadata(metadata_files, tmp_path):
 
     with pytest.raises(ValueError, match="DecodeImage"):
         PanelLabelTextRecognizer(
-            "recognition.onnx", str(invalid), runner=StubRunner()
+            str(invalid), runner=StubRunner()
         )
 
 
 def test_recognition_dynamic_canvas_is_capped_at_3200(metadata_files):
     _, recognition = metadata_files
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=StubRunner()
+        str(recognition), runner=StubRunner()
     )
     very_wide = np.zeros((48, 4000, 3), dtype=np.uint8)
 
@@ -316,7 +310,6 @@ def test_recognition_dynamic_canvas_is_capped_at_3200(metadata_files):
 def test_recognition_static_input_shape_stretches_without_padding(metadata_files):
     _, recognition = metadata_files
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx",
         str(recognition),
         input_shape=[3, 32, 100],
         runner=StubRunner(),
@@ -334,11 +327,11 @@ def test_recognition_static_input_shape_stretches_without_padding(metadata_files
 def test_recognition_predict_preserves_ctc_result_contract(metadata_files):
     _, recognition = metadata_files
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=StubRunner()
+        str(recognition), runner=StubRunner()
     )
 
     assert recognizer.predict([np.zeros((48, 64, 3), dtype=np.uint8)]) == [
-        {"rec_text": "", "rec_score": 0.0}
+        CtcRecognitionResult(text="", score=0.0)
     ]
 
 
@@ -348,14 +341,14 @@ def test_recognition_predict_batches_crops_on_a_shared_dynamic_canvas(
     _, recognition = metadata_files
     runner = RecordingRunner()
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=runner
+        str(recognition), runner=runner
     )
     narrow = np.zeros((48, 64, 3), dtype=np.uint8)
     wide = np.zeros((96, 643, 3), dtype=np.uint8)
 
     assert recognizer.predict([narrow, wide]) == [
-        {"rec_text": "0", "rec_score": 1.0},
-        {"rec_text": "0", "rec_score": 1.0},
+        CtcRecognitionResult(text="0", score=1.0),
+        CtcRecognitionResult(text="0", score=1.0),
     ]
     assert runner.input_shapes == [(2, 3, 48, 321)]
 
@@ -364,7 +357,7 @@ def test_recognition_predict_empty_input_does_not_call_runner(metadata_files):
     _, recognition = metadata_files
     runner = RecordingRunner()
     recognizer = PanelLabelTextRecognizer(
-        "recognition.onnx", str(recognition), runner=runner
+        str(recognition), runner=runner
     )
 
     assert recognizer.predict([]) == []
@@ -382,5 +375,5 @@ def test_malformed_transform_operation_raises_clear_value_error(
 
     with pytest.raises(ValueError, match="transform_ops.*mapping"):
         PanelLabelOrientationClassifier(
-            "orientation.onnx", str(invalid), runner=StubRunner()
+            str(invalid), runner=StubRunner()
         )

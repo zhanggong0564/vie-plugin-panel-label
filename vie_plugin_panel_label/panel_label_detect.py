@@ -8,23 +8,43 @@
 '''
 
 import time
-from pathlib import Path
 
 import cv2
 import numpy as np
 
-from services.rfdetr import RFDetrOnnxInfer
-from services.yolo import YoloOnnxInfer
+from services.base import CtcRecognitionResult
+from services.inference import InferenceRunner
+from services.rfdetr import RFDetrInfer
 from utils import vision_logger
 
 from .models import PanellabelItem
 from .ocr_models import PanelLabelOrientationClassifier, PanelLabelTextRecognizer
-from .utils import Points_to_Mask, dedup_overlapping_polygons
+from .utils import (
+    Points_to_Mask,
+    Points_to_Mask_legacy,
+    dedup_overlapping_polygons,
+)
 
 
-class PanelLabelDetect(RFDetrOnnxInfer):
-    def __init__(self, model_path, confThreshold=0.5, nmsThreshold=0.5, task="seg"):
-        super().__init__(model_path, 2, confThreshold, task)
+class PanelLabelDetect(RFDetrInfer):
+    def __init__(
+        self,
+        confThreshold=0.5,
+        nmsThreshold=0.5,
+        task="seg",
+        *,
+        runner: InferenceRunner,
+        cpu_fast_path=True,
+    ):
+        super().__init__(
+            2,
+            runner,
+            confThreshold=confThreshold,
+            task=task,
+            mask_output=(
+                "polygons_only" if cpu_fast_path else "full"
+            ),
+        )
         self.id2name = {
             0: "line",
             1: "QFU",
@@ -34,31 +54,40 @@ class PanelLabelDetect(RFDetrOnnxInfer):
 class OCRPipeline:
     def __init__(
         self,
-        detect_model_path,
-        orient_model_path,
-        text_recognition_model_path,
+        orientation_metadata_path,
+        recognition_metadata_path,
         confThreshold=0.5,
         nmsThreshold=0.5,
         text_rec_score_thresh=0.7,
         text_orient_score_thresh=0.7,
         text_rec_input_shape=None,
         dedup_overlap_thresh=0.6,
+        cpu_fast_path=True,
+        *,
+        detection_runner: InferenceRunner,
+        orientation_runner: InferenceRunner,
+        recognition_runner: InferenceRunner,
     ):
-        self.detect_model = PanelLabelDetect(detect_model_path, confThreshold, nmsThreshold, task="seg")
+        self.detect_model = PanelLabelDetect(
+            confThreshold,
+            nmsThreshold,
+            task="seg",
+            runner=detection_runner,
+            cpu_fast_path=cpu_fast_path,
+        )
         # 同类实例旋转框 IoS 去重阈值（>=1 关闭），抑制同一线标的重复检测框
         self.dedup_overlap_thresh = dedup_overlap_thresh
+        self.cpu_fast_path = cpu_fast_path
 
-        orient_metadata_path = Path(orient_model_path).with_suffix("") / "inference.yml"
         self.text_orient_model = PanelLabelOrientationClassifier(
-            orient_model_path,
-            str(orient_metadata_path),
+            orientation_metadata_path,
+            runner=orientation_runner,
         )
 
-        recognition_metadata_path = Path(text_recognition_model_path).with_suffix("") / "inference.yml"
         self.text_rec_model = PanelLabelTextRecognizer(
-            text_recognition_model_path,
-            str(recognition_metadata_path),
+            recognition_metadata_path,
             input_shape=text_rec_input_shape,
+            runner=recognition_runner,
         )
 
         self.text_rec_score_thresh = text_rec_score_thresh
@@ -73,8 +102,8 @@ class OCRPipeline:
         rotated = []
         uncertain = []
         for index, (crop_image, result) in enumerate(zip(crops, orient_results)):
-            angle = int(result["class_ids"][0])
-            score = float(result["scores"][0])
+            angle = result.class_id
+            score = result.score
             rotated.append(cv2.rotate(crop_image, cv2.ROTATE_180) if angle == 1 else crop_image)
             if score < self.text_orient_score_thresh:
                 uncertain.append(index)
@@ -96,18 +125,18 @@ class OCRPipeline:
                 f"fallback recognition result count {len(flipped_results)} " f"does not match crop count {len(flipped)}"
             )
         for position, index in enumerate(uncertain_indices):
-            if float(flipped_results[position]["rec_score"]) > float(results[index]["rec_score"]):
+            if flipped_results[position].score > results[index].score:
                 final_crops[index] = flipped[position]
                 results[index] = flipped_results[position]
         return final_crops, results
 
-    def _extract_texts(self, rec_results):
+    def _extract_texts(
+        self, rec_results: list[CtcRecognitionResult]
+    ) -> list[str | None]:
         texts = []
         for result in rec_results:
-            text = result["rec_text"]
-            if isinstance(text, list):
-                text = text[0] if text else ""
-            score = float(result["rec_score"])
+            text = result.text
+            score = result.score
             texts.append(text if text and text.strip() and score >= self.text_rec_score_thresh else None)
         return texts
 
@@ -127,7 +156,14 @@ class OCRPipeline:
                 mask_polygons = mask_polygons[keep]
         points_line = mask_polygons[class_ids == 0] if 0 in class_ids else []
         start = time.time()
-        mask_rois, sorted_idxs, _ = Points_to_Mask(image, points_line, return_maps=True)
+        roi_extractor = (
+            Points_to_Mask
+            if getattr(self, "cpu_fast_path", True)
+            else Points_to_Mask_legacy
+        )
+        mask_rois, sorted_idxs, _ = roi_extractor(
+            image, points_line, return_maps=True
+        )
         end = time.time()
         vision_logger.debug(f"Points_to_Mask: {end - start:.4f}秒")
         start = time.time()
@@ -160,3 +196,18 @@ class OCRPipeline:
         )
 
         return panel_label_item
+
+    def close(self) -> None:
+        first_error = None
+        for model in (
+            self.detect_model,
+            self.text_orient_model,
+            self.text_rec_model,
+        ):
+            try:
+                model.close()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error

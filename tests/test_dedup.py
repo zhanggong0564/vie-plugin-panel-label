@@ -78,8 +78,10 @@ class TestPointsToMaskContract:
         monkeypatch.setattr(panel_utils, "sort_mask", lambda image, pts, row_alpha: (points, sorted_idx))
         monkeypatch.setattr(
             panel_utils,
-            "mask2roi",
-            lambda image, pts, return_maps=False: (["roi"], ["transform"]) if return_maps else ["roi"],
+            "mask2roi_local",
+            lambda image, pts, return_maps=False: (
+                (["roi"], ["transform"]) if return_maps else ["roi"]
+            ),
         )
 
         mask_rois, actual_sorted_idx, transforms = panel_utils.Points_to_Mask(
