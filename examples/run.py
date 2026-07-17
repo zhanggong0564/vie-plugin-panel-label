@@ -29,10 +29,10 @@ from tqdm import tqdm
 # 让示例在任意 cwd 下都能 import 框架（services/schemas 在仓库根，未作为包安装）
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-import vie_plugin_panel_label.plugin  # noqa: E402,F401  导入即触发 @detection_factory.register("panel_label")
+import vie_plugin_panel_label.plugin  # noqa: E402,F401  导入即触发 @scenario_registry.register("panel_label")
 from vie_plugin_panel_label import PRODUCT_guideline  # noqa: E402
 from vie_plugin_panel_label.product_type import PRODUCT_TYPE  # noqa: E402
-from services.api import detection_factory  # noqa: E402
+from services.scenario_registry import scenario_registry  # noqa: E402
 from schemas.data_base import InputParamsBusiness  # noqa: E402
 
 
@@ -324,7 +324,7 @@ def main():
     # --rule 选项优先，其次单图位置参数，最后默认 all
     rule = args.rule_opt or args.rule_pos or "all"
 
-    detector = detection_factory.get_scenarios("panel_label")
+    detector = scenario_registry.create("panel_label")
     if args.batch:
         run_batch(
             detector,

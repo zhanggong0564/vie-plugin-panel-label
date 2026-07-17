@@ -8,10 +8,14 @@ from unittest.mock import MagicMock, patch
 import cv2
 import numpy as np
 
+from services.base import ClassificationResult, CtcRecognitionResult
 from vie_plugin_panel_label.panel_label_detect import OCRPipeline
 
 
 def test_ocr_pipeline_builds_onnx_models():
+    detection_runner = object()
+    orientation_runner = object()
+    recognition_runner = object()
     orient = MagicMock()
     recognizer = MagicMock()
     with (
@@ -27,13 +31,23 @@ def test_ocr_pipeline_builds_onnx_models():
             return_value=recognizer,
         ) as recognizer_class,
     ):
-        pipeline = OCRPipeline("det.onnx", "ori.onnx", "rec.onnx")
+        pipeline = OCRPipeline(
+            "ori/inference.yml",
+            "rec/inference.yml",
+            detection_runner=detection_runner,
+            orientation_runner=orientation_runner,
+            recognition_runner=recognition_runner,
+        )
 
     assert pipeline.text_orient_model is orient
     assert pipeline.text_rec_model is recognizer
-    orient_class.assert_called_once_with("ori.onnx", "ori/inference.yml")
+    orient_class.assert_called_once_with(
+        "ori/inference.yml", runner=orientation_runner
+    )
     recognizer_class.assert_called_once_with(
-        "rec.onnx", "rec/inference.yml", input_shape=None
+        "rec/inference.yml",
+        input_shape=None,
+        runner=recognition_runner,
     )
 
 
@@ -80,9 +94,9 @@ def test_orient_crops_rotates_180_and_tracks_only_uncertain_indices():
     pipeline = make_pipeline()
     crops = [crop(1), crop(10), crop(20)]
     pipeline.text_orient_model.predict.return_value = [
-        {"class_ids": [0], "scores": [0.99]},
-        {"class_ids": [1], "scores": [0.95]},
-        {"class_ids": [1], "scores": [0.50]},
+        ClassificationResult(0, 0.99),
+        ClassificationResult(1, 0.95),
+        ClassificationResult(1, 0.50),
     ]
 
     rotated, uncertain = pipeline._orient_crops(crops)
@@ -97,13 +111,13 @@ def test_recognize_with_fallback_uses_sparse_indices_and_writes_back_in_place():
     pipeline = make_pipeline()
     rotated = [crop(1), crop(10), crop(20)]
     initial = [
-        {"rec_text": "A", "rec_score": 0.6},
-        {"rec_text": "B", "rec_score": 0.7},
-        {"rec_text": "C", "rec_score": 0.8},
+        CtcRecognitionResult("A", 0.6),
+        CtcRecognitionResult("B", 0.7),
+        CtcRecognitionResult("C", 0.8),
     ]
     fallback = [
-        {"rec_text": "A2", "rec_score": 0.9},
-        {"rec_text": "C2", "rec_score": 0.6},
+        CtcRecognitionResult("A2", 0.9),
+        CtcRecognitionResult("C2", 0.6),
     ]
     pipeline.text_rec_model.predict.side_effect = [initial, fallback]
 
@@ -122,7 +136,7 @@ def test_recognize_with_fallback_uses_sparse_indices_and_writes_back_in_place():
 def test_orient_crops_rejects_result_count_mismatch():
     pipeline = make_pipeline()
     pipeline.text_orient_model.predict.return_value = [
-        {"class_ids": [0], "scores": [0.99]},
+        ClassificationResult(0, 0.99),
     ]
 
     with np.testing.assert_raises_regex(ValueError, "orientation result count"):
@@ -132,7 +146,7 @@ def test_orient_crops_rejects_result_count_mismatch():
 def test_recognize_with_fallback_rejects_result_count_mismatch():
     pipeline = make_pipeline()
     pipeline.text_rec_model.predict.return_value = [
-        {"rec_text": "A", "rec_score": 0.9},
+        CtcRecognitionResult("A", 0.9),
     ]
 
     with np.testing.assert_raises_regex(ValueError, "recognition result count"):
@@ -143,8 +157,8 @@ def test_recognize_with_fallback_rejects_fallback_result_count_mismatch():
     pipeline = make_pipeline()
     pipeline.text_rec_model.predict.side_effect = [
         [
-            {"rec_text": "A", "rec_score": 0.9},
-            {"rec_text": "B", "rec_score": 0.8},
+            CtcRecognitionResult("A", 0.9),
+            CtcRecognitionResult("B", 0.8),
         ],
         [],
     ]
@@ -153,17 +167,16 @@ def test_recognize_with_fallback_rejects_fallback_result_count_mismatch():
         pipeline._recognize_with_fallback([crop(1), crop(2)], [1])
 
 
-def test_extract_texts_normalizes_shapes_and_thresholds():
+def test_extract_texts_applies_text_and_score_thresholds():
     pipeline = make_pipeline()
     results = [
-        {"rec_text": "A", "rec_score": 0.9},
-        {"rec_text": ["B"], "rec_score": 0.8},
-        {"rec_text": [], "rec_score": 0.9},
-        {"rec_text": "   ", "rec_score": 0.9},
-        {"rec_text": "LOW", "rec_score": 0.69},
+        CtcRecognitionResult("A", 0.9),
+        CtcRecognitionResult("", 0.9),
+        CtcRecognitionResult("   ", 0.9),
+        CtcRecognitionResult("LOW", 0.69),
     ]
 
-    assert pipeline._extract_texts(results) == ["A", "B", None, None, None]
+    assert pipeline._extract_texts(results) == ["A", None, None, None]
 
 
 def test_infer_preserves_sorted_line_mapping_across_all_output_fields():
@@ -182,15 +195,15 @@ def test_infer_preserves_sorted_line_mapping_across_all_output_fields():
     roi_for_line_2 = crop(20)
     roi_for_line_0 = crop(1)
     pipeline.text_orient_model.predict.return_value = [
-        {"class_ids": [0], "scores": [0.99]},
-        {"class_ids": [0], "scores": [0.40]},
+        ClassificationResult(0, 0.99),
+        ClassificationResult(0, 0.40),
     ]
     pipeline.text_rec_model.predict.side_effect = [
         [
-            {"rec_text": "LOW", "rec_score": 0.60},
-            {"rec_text": "WRONG", "rec_score": 0.50},
+            CtcRecognitionResult("LOW", 0.60),
+            CtcRecognitionResult("WRONG", 0.50),
         ],
-        [{"rec_text": "LINE0", "rec_score": 0.95}],
+        [CtcRecognitionResult("LINE0", 0.95)],
     ]
 
     with patch(
