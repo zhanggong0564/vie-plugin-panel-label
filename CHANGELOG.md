@@ -7,6 +7,8 @@
 
 ### 变更
 
+- ONNX 方向分类与文字识别的 `inference.yml` 路径改为显式场景配置，确保离线
+  发布权重收集会包含运行时必需的预处理和字典 metadata。
 - 方向分类与 CTC 识别改为消费框架类型化结果；OCR pipeline 显式接收模型 metadata
   路径，模型对象不再持有或接收仅供 runner 加载的 ONNX 路径。
 - 场景注册切换至框架 `ScenarioRegistry`，保持检测、方向仲裁、文字识别和 API
