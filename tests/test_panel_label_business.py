@@ -39,8 +39,8 @@ def test_model_initialization_uses_direct_ocr_contract():
         PanelLabelJudgeApi(settings)
 
     pipeline.assert_called_once_with(
-        "weights/panel_label/v2/textline_ori_lcnet_v2/inference.yml",
-        "weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml",
+        "./weights/panel_label/v2/textline_ori_lcnet_v2/inference.yml",
+        "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml",
         0.6,
         0.8,
         0.7,
