@@ -7,8 +7,6 @@
 @Description  :
 '''
 
-from pathlib import Path
-
 from .config import PanelLabelConfig
 from .panel_label_detect import OCRPipeline
 from .models import ErrorType, PanelInfo, PanellabelItem
@@ -71,16 +69,9 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 ),
             )
             created_runners.append(recognition_runner)
-            orientation_metadata_path = (
-                Path(cfg.orient_model_path).with_suffix("") / "inference.yml"
-            )
-            recognition_metadata_path = (
-                Path(cfg.text_recognition_model_path).with_suffix("")
-                / "inference.yml"
-            )
             self.detector = OCRPipeline(
-                str(orientation_metadata_path),
-                str(recognition_metadata_path),
+                cfg.orient_metadata_path,
+                cfg.text_recognition_metadata_path,
                 cfg.confThreshold,
                 cfg.nmsThreshold,
                 cfg.text_rec_score_thresh,
