@@ -30,8 +30,14 @@ def test_panel_label_detect_uses_rfdetr_base():
 def test_config_points_to_onnx_models():
     cfg = PanelLabelConfig()
     assert cfg.orient_model_path.endswith("textline_ori_lcnet_v2.onnx")
+    assert cfg.orient_metadata_path.endswith(
+        "textline_ori_lcnet_v2/inference.yml"
+    )
     assert cfg.text_recognition_model_path.endswith(
         "PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
+    )
+    assert cfg.text_recognition_metadata_path.endswith(
+        "PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml"
     )
 
 
