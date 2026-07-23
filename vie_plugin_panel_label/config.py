@@ -50,7 +50,7 @@ class PanelLabelConfig:
         self.cpu_fast_path = _env_flag("PANEL_LABEL_CPU_FAST_PATH", True)
         # guideline 引导框 ROI 过滤开关：默认开启，默认 API 契约要求请求携带
         # guideline_coordinates；特殊兼容部署可设 PANEL_LABEL_GUIDELINE_FILTER=false 关闭。
-        self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", False)
+        self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", True)
         # 检测实例去重阈值（旋转框交集/较小框面积）：同一线标的重复框（全长框+半截框）
         # 轴对齐 NMS 抑制不掉，超过该重叠度只保留高置信度者；设 >=1 关闭去重。
         self.dedup_overlap_thresh = _env_float("PANEL_LABEL_DEDUP_OVERLAP", 0.6)
