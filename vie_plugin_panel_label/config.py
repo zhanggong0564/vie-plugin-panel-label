@@ -2,7 +2,7 @@
 @Author       : gongzhang4
 @Date         : 2026-03-02 08:01:03
 @LastEditors  : 张弓 zhanggong1@sungrowpower.com
-@LastEditTime : 2026-07-15 10:00:04
+@LastEditTime : 2026-07-23 02:45:30
 @FilePath     : config.py
 @Description  :
 '''
@@ -30,16 +30,11 @@ def _env_float(name: str, default: float) -> float:
 
 
 class PanelLabelConfig:
-    model_path = "./weights/panel_label/v2/rfdetr-seg-nano.onnx"
+    model_path = "./weights/panel_label/v2/rfdetr-seg-nano-v1.1.onnx"
     orient_model_path = "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx"
-    orient_metadata_path = (
-        "./weights/panel_label/v2/textline_ori_lcnet_v2/inference.yml"
-    )
+    orient_metadata_path = "./weights/panel_label/v2/textline_ori_lcnet_v2/inference.yml"
     text_recognition_model_path = "./weights/panel_label/v2/PP-OCRv5_server_rec_merged_v6_diff_lr.onnx"
-    text_recognition_metadata_path = (
-        "./weights/panel_label/v2/"
-        "PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml"
-    )
+    text_recognition_metadata_path = "./weights/panel_label/v2/" "PP-OCRv5_server_rec_merged_v6_diff_lr/inference.yml"
     confThreshold = 0.6
     nmsThreshold = 0.8
     # TextLineOrientation 文本行方向分类
@@ -52,9 +47,7 @@ class PanelLabelConfig:
     text_rec_input_shape = None
 
     def __init__(self):
-        self.cpu_fast_path = _env_flag(
-            "PANEL_LABEL_CPU_FAST_PATH", True
-        )
+        self.cpu_fast_path = _env_flag("PANEL_LABEL_CPU_FAST_PATH", True)
         # guideline 引导框 ROI 过滤开关：默认开启，默认 API 契约要求请求携带
         # guideline_coordinates；特殊兼容部署可设 PANEL_LABEL_GUIDELINE_FILTER=false 关闭。
         self.enable_guideline_filter = _env_flag("PANEL_LABEL_GUIDELINE_FILTER", False)
