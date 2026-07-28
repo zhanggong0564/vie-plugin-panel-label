@@ -97,14 +97,19 @@ class OCRPipeline:
         orient_results = list(self.text_orient_model.predict(crops))
         if len(orient_results) != len(crops):
             raise ValueError(
-                f"orientation result count {len(orient_results)} does not match " f"crop count {len(crops)}"
+                f"orientation result count {len(orient_results)} does not "
+                f"match crop count {len(crops)}"
             )
         rotated = []
         uncertain = []
         for index, (crop_image, result) in enumerate(zip(crops, orient_results)):
             angle = result.class_id
             score = result.score
-            rotated.append(cv2.rotate(crop_image, cv2.ROTATE_180) if angle == 1 else crop_image)
+            rotated.append(
+                cv2.rotate(crop_image, cv2.ROTATE_180)
+                if angle == 1
+                else crop_image
+            )
             if score < self.text_orient_score_thresh:
                 uncertain.append(index)
         return rotated, uncertain
@@ -114,15 +119,20 @@ class OCRPipeline:
         results = list(self.text_rec_model.predict(final_crops))
         if len(results) != len(final_crops):
             raise ValueError(
-                f"recognition result count {len(results)} does not match " f"crop count {len(final_crops)}"
+                f"recognition result count {len(results)} does not match "
+                f"crop count {len(final_crops)}"
             )
         if not uncertain_indices:
             return final_crops, results
-        flipped = [cv2.rotate(final_crops[index], cv2.ROTATE_180) for index in uncertain_indices]
+        flipped = [
+            cv2.rotate(final_crops[index], cv2.ROTATE_180)
+            for index in uncertain_indices
+        ]
         flipped_results = list(self.text_rec_model.predict(flipped))
         if len(flipped_results) != len(flipped):
             raise ValueError(
-                f"fallback recognition result count {len(flipped_results)} " f"does not match crop count {len(flipped)}"
+                f"fallback recognition result count {len(flipped_results)} "
+                f"does not match crop count {len(flipped)}"
             )
         for position, index in enumerate(uncertain_indices):
             if flipped_results[position].score > results[index].score:
@@ -133,12 +143,16 @@ class OCRPipeline:
     def _extract_texts(
         self, rec_results: list[CtcRecognitionResult]
     ) -> list[str | None]:
-        texts = []
-        for result in rec_results:
-            text = result.text
-            score = result.score
-            texts.append(text if text and text.strip() and score >= self.text_rec_score_thresh else None)
-        return texts
+        return [
+            (
+                result.text
+                if result.text
+                and result.text.strip()
+                and result.score >= self.text_rec_score_thresh
+                else None
+            )
+            for result in rec_results
+        ]
 
     def infer(self, image) -> PanellabelItem:
         results = self.detect_model.infer(image)
@@ -148,9 +162,16 @@ class OCRPipeline:
         # 二次去重：同一线标的重复检测框（全长框+半截框）轴对齐 NMS 抑制不掉，
         # 按 mask 旋转框 IoS 去重，避免 observed 数多于标准数误判 extra。
         if len(class_ids) > 1:
-            keep = dedup_overlapping_polygons(mask_polygons, scores, class_ids, self.dedup_overlap_thresh)
+            keep = dedup_overlapping_polygons(
+                mask_polygons,
+                scores,
+                class_ids,
+                self.dedup_overlap_thresh,
+            )
             if len(keep) < len(class_ids):
-                vision_logger.info(f"检测实例去重: {len(class_ids)} -> {len(keep)}")
+                vision_logger.info(
+                    f"检测实例去重: {len(class_ids)} -> {len(keep)}"
+                )
                 class_ids = class_ids[keep]
                 scores = scores[keep]
                 mask_polygons = mask_polygons[keep]
@@ -171,8 +192,13 @@ class OCRPipeline:
         text_crops = []
         texts = []
         if mask_rois:
-            rotated_crops, uncertain_indices = self._orient_crops(list(mask_rois))
-            text_crops, rec_results = self._recognize_with_fallback(rotated_crops, uncertain_indices)
+            rotated_crops, uncertain_indices = self._orient_crops(
+                list(mask_rois)
+            )
+            text_crops, rec_results = self._recognize_with_fallback(
+                rotated_crops,
+                uncertain_indices,
+            )
             texts = self._extract_texts(rec_results)
 
         end = time.time()
@@ -181,12 +207,20 @@ class OCRPipeline:
         roi_indices = range(len(mask_rois))
         ori_index = [line_indices[sorted_idxs[index]] for index in roi_indices]
         positions = [
-            np.int64(cv2.boxPoints(cv2.minAreaRect(np.array(mask_polygons[idx], dtype=np.float32)))).flatten().tolist()
-            for idx in ori_index
+            np.int64(
+                cv2.boxPoints(
+                    cv2.minAreaRect(
+                        np.array(mask_polygons[index], dtype=np.float32)
+                    )
+                )
+            )
+            .flatten()
+            .tolist()
+            for index in ori_index
         ]
         roi_classes_ids = class_ids[ori_index]
         confidences = [scores[idx] for idx in ori_index]
-        panel_label_item = PanellabelItem(
+        return PanellabelItem(
             Points=positions,
             index=ori_index,
             class_id=roi_classes_ids.tolist(),
@@ -194,8 +228,6 @@ class OCRPipeline:
             confidence=confidences,
             text_crops=text_crops,
         )
-
-        return panel_label_item
 
     def close(self) -> None:
         first_error = None
