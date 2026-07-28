@@ -109,7 +109,7 @@ def test_judge_initialization_creates_three_onnx_runners():
         call(
             RunnerSpec(
                 scenario="panel_label",
-                onnx_path="./weights/panel_label/v2/rfdetr-seg-nano.onnx",
+                onnx_path="./weights/panel_label/v2/rfdetr-seg-nano-v1.1.onnx",
             ),
             options,
         ),
