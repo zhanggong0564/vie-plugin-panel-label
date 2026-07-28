@@ -7,7 +7,7 @@ from services.rfdetr import RFDetrInfer
 
 def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
-    assert cfg.model_path == "./weights/panel_label/v2/rfdetr-seg-nano.onnx"
+    assert cfg.model_path == "./weights/panel_label/v2/rfdetr-seg-nano-v1.1.onnx"
     assert cfg.confThreshold == 0.6
 
 
