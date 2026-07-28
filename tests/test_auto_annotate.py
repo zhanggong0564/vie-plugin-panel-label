@@ -1,14 +1,54 @@
 """auto_annotate 单元测试"""
 import json
 import sys
+from types import ModuleType
+from unittest.mock import MagicMock, patch
+
 import cv2
 import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 # 将项目根目录加入 path（与其他测试保持一致）
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+
+@pytest.fixture(autouse=True)
+def stub_paddle_modules(monkeypatch):
+    """让自动标注脚本在未安装 PaddleOCR/PaddleX 时仍可被单元测试导入。"""
+    paddleocr = ModuleType("paddleocr")
+    paddleocr.TextDetection = MagicMock()
+    paddleocr.TextLineOrientationClassification = MagicMock()
+    paddleocr.TextRecognition = MagicMock()
+
+    paddlex = ModuleType("paddlex")
+    inference = ModuleType("paddlex.inference")
+    pipelines = ModuleType("paddlex.inference.pipelines")
+    components = ModuleType("paddlex.inference.pipelines.components")
+    components.CropByPolys = MagicMock()
+
+    for package in (paddlex, inference, pipelines):
+        package.__path__ = []
+
+    modules = {
+        "paddleocr": paddleocr,
+        "paddlex": paddlex,
+        "paddlex.inference": inference,
+        "paddlex.inference.pipelines": pipelines,
+        "paddlex.inference.pipelines.components": components,
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+
+    module_name = "scripts.data.auto_annotate"
+    parent_module = sys.modules.get("scripts.data")
+    if parent_module is not None:
+        parent_module.__dict__.pop("auto_annotate", None)
+    sys.modules.pop(module_name, None)
+    yield
+    sys.modules.pop(module_name, None)
+    if parent_module is not None:
+        parent_module.__dict__.pop("auto_annotate", None)
 
 
 class TestBuildLabelmeJson:
