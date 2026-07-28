@@ -16,6 +16,14 @@ polygon_contains = utils.polygon_contains
 SQUARE = [100, 100, 300, 100, 300, 300, 100, 300]
 
 
+def test_legacy_utils_reexports_polygon_geometry():
+    from vie_plugin_panel_label.polygon_geometry import (
+        polygon_contains as geometry_polygon_contains,
+    )
+
+    assert polygon_contains is geometry_polygon_contains
+
+
 class TestPolygonContains:
     def test_point_inside_kept(self):
         assert polygon_contains(SQUARE, (200, 200)) is True
