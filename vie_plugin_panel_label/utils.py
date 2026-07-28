@@ -13,7 +13,15 @@ import cv2
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+
 from utils import vision_logger
+from vie_plugin_panel_label.polygon_geometry import (
+    dedup_overlapping_polygons,
+    polygon_contains,
+    polygon_overlap_ratio,
+    rect_contains,
+    rotated_box_overlap,
+)
 
 
 _LOCAL_ROI_FALLBACK_WARNED = False
@@ -133,7 +141,6 @@ def points_to_local_mask(shape_hw, points, padding=0):
 
 
 def rotate_upright(img, mask):
-
     ys, xs = np.where(mask > 0)
     pts = np.stack([xs, ys], axis=1).astype(np.float32)
     rect = cv2.minAreaRect(pts)  # ((cx,cy),(w,h),angle)
@@ -160,9 +167,20 @@ def rotate_upright(img, mask):
     M[0, 2] += (new_w - roi.shape[1]) / 2
     M[1, 2] += (new_h - roi.shape[0]) / 2
     # h, w = roi.shape[:2]
-    img_r = cv2.warpAffine(roi, M, (new_w, new_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    img_r = cv2.warpAffine(
+        roi,
+        M,
+        (new_w, new_h),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
     mask_r = cv2.warpAffine(
-        mask_roi, M, (new_w, new_h), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0
+        mask_roi,
+        M,
+        (new_w, new_h),
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
     )
     # M: crop 坐标 -> img_r 坐标；offset: crop 坐标 -> 原图坐标。供 ROI 点反映射回原图用。
     return img_r, mask_r, M, (int(x_min), int(y_min))
@@ -367,7 +385,12 @@ def _flatten_rotated_roi(
 
 
 def mask2roi(
-    img: np.ndarray, points: np.array, smooth=21, sample_step=1, border_mode="replicate", return_maps=False
+    img: np.ndarray,
+    points: np.array,
+    smooth=21,
+    sample_step=1,
+    border_mode="replicate",
+    return_maps=False,
 ):
     rois = []
     transforms: List[Optional[RoiTransform]] = []
@@ -404,7 +427,12 @@ def _warn_local_roi_fallback_once(error):
 
 
 def mask2roi_local(
-    img: np.ndarray, points: np.array, smooth=21, sample_step=1, border_mode="replicate", return_maps=False
+    img: np.ndarray,
+    points: np.array,
+    smooth=21,
+    sample_step=1,
+    border_mode="replicate",
+    return_maps=False,
 ):
     rois = []
     transforms: List[Optional[RoiTransform]] = []
@@ -469,73 +497,3 @@ def Points_to_Mask_legacy(image_src, points, sort_by="y", return_maps=False):
         return mask_rois, sorted_idx, transforms
     mask_rois = mask2roi(image_src, points_line)
     return mask_rois, sorted_idx
-
-
-def rotated_box_overlap(poly1, poly2) -> float:
-    """两多边形最小外接旋转矩形的交集面积 / 较小矩形面积（IoS），范围 [0,1]。
-
-    用 IoS 而非 IoU：同一线标的重复检测常是"全长框 + 半截框"，半截框几乎
-    完全落在全长框内，IoS 接近 1 而 IoU 只有长度占比；相邻倾斜线标的
-    旋转矩形几乎不相交，IoS 接近 0，区分度好。
-    """
-    r1 = cv2.boxPoints(cv2.minAreaRect(np.asarray(poly1, dtype=np.float32).reshape(-1, 2)))
-    r2 = cv2.boxPoints(cv2.minAreaRect(np.asarray(poly2, dtype=np.float32).reshape(-1, 2)))
-    inter, _ = cv2.intersectConvexConvex(r1, r2)
-    if inter <= 0:
-        return 0.0
-    smaller = min(cv2.contourArea(r1), cv2.contourArea(r2))
-    return float(inter / smaller) if smaller > 0 else 0.0
-
-
-def dedup_overlapping_polygons(polygons, scores, class_ids, overlap_thresh: float):
-    """同类实例间按旋转框 IoS 去重，保留高置信度者；返回升序的保留索引。
-
-    YOLO 轴对齐 NMS（宽松阈值）抑制不掉同一线标上的重复框，在此基于
-    mask 多边形做二次去重。overlap_thresh >= 1 时等效关闭。
-    """
-    order = sorted(range(len(polygons)), key=lambda i: scores[i], reverse=True)
-    keep = []
-    for i in order:
-        is_dup = any(
-            class_ids[i] == class_ids[j] and rotated_box_overlap(polygons[i], polygons[j]) > overlap_thresh
-            for j in keep
-        )
-        if not is_dup:
-            keep.append(i)
-    return sorted(keep)
-
-
-def rect_contains(rect, pt, include_border=True):
-    x, y, w, h = rect
-    px, py = pt
-    if include_border:
-        return (x <= px <= x + w) and (y <= py <= y + h)
-    else:
-        return (x < px < x + w) and (y < py < y + h)
-
-
-def polygon_contains(poly_pts, pt, include_border=True):
-    """点 pt 是否落在四边形 poly_pts 内（顺时针四角，像素坐标）。
-
-    poly_pts 接受扁平 [x1,y1,...,x4,y4] 或 [(x,y),...]；用 cv2.pointPolygonTest
-    判含：返回 +1 内、0 边界、-1 外。include_border 控制边界点是否计入，
-    与 rect_contains 的 include_border 语义对称。
-    """
-    poly = np.asarray(poly_pts, dtype=np.float32).reshape(-1, 2)
-    dist = cv2.pointPolygonTest(poly, (float(pt[0]), float(pt[1])), False)
-    if include_border:
-        return dist >= 0
-    return dist > 0
-
-
-def polygon_overlap_ratio(subject_poly, roi_poly) -> float:
-    """subject_poly 落在 roi_poly 内的面积占比，范围 [0, 1]。"""
-    subject = np.asarray(subject_poly, dtype=np.float32).reshape(-1, 2)
-    roi = np.asarray(roi_poly, dtype=np.float32).reshape(-1, 2)
-    subject_area = cv2.contourArea(subject)
-    if subject_area <= 0:
-        return 0.0
-    inter_area, _ = cv2.intersectConvexConvex(subject, roi)
-    if inter_area <= 0:
-        return 0.0
-    return min(1.0, float(inter_area) / float(subject_area))
