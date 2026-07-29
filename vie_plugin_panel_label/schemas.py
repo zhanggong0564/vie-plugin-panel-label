@@ -9,14 +9,12 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Dict, Optional, Tuple, Literal  # 新增Optional
-from schemas.common import GuideLineItem, ExampleImageItem
+from schemas.common import VisualReferenceParams
 
 
-class ModelParams(BaseModel):
+class ModelParams(VisualReferenceParams):
     """modelParams整体模型（guide_line/example_images设为可选）"""
 
-    guide_line: Optional[List[GuideLineItem]] = Field(default_factory=list, description="参考线图片列表")
-    example_images: Optional[List[ExampleImageItem]] = Field(default_factory=list, description="示例图片列表")
     product_type: str = Field(..., description="产品型号(例如:QF2)")
     rule: Literal["front", "back", "all"] = Field(default="all", description="字符比较规则：front=斜杠前，back=斜杠后，all=全检")
     # 标准线标顺序与引导框由业务随请求下发，不再从本地词典读取。
