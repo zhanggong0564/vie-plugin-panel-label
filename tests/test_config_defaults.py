@@ -1,5 +1,8 @@
 """panel_label 插件配置默认值测试（原 test/test_config.py 中的对应断言迁移而来）。"""
 
+import pytest
+from pydantic import ValidationError
+
 from vie_plugin_panel_label.config import PanelLabelConfig
 from vie_plugin_panel_label.panel_label_detect import PanelLabelDetect
 from services.rfdetr import RFDetrInfer
@@ -82,9 +85,10 @@ class TestDedupOverlapThresh:
         monkeypatch.setenv("PANEL_LABEL_DEDUP_OVERLAP", "0.75")
         assert PanelLabelConfig().dedup_overlap_thresh == 0.75
 
-    def test_env_invalid_falls_back(self, monkeypatch):
+    def test_env_invalid_is_rejected(self, monkeypatch):
         monkeypatch.setenv("PANEL_LABEL_DEDUP_OVERLAP", "abc")
-        assert PanelLabelConfig().dedup_overlap_thresh == 0.6
+        with pytest.raises(ValidationError):
+            PanelLabelConfig()
 
 
 class TestGuidelineOverlapThresh:
@@ -96,6 +100,7 @@ class TestGuidelineOverlapThresh:
         monkeypatch.setenv("PANEL_LABEL_GUIDELINE_OVERLAP", "0.95")
         assert PanelLabelConfig().guideline_overlap_thresh == 0.95
 
-    def test_env_invalid_falls_back(self, monkeypatch):
+    def test_env_invalid_is_rejected(self, monkeypatch):
         monkeypatch.setenv("PANEL_LABEL_GUIDELINE_OVERLAP", "abc")
-        assert PanelLabelConfig().guideline_overlap_thresh == 0.9
+        with pytest.raises(ValidationError):
+            PanelLabelConfig()
