@@ -38,6 +38,7 @@ def test_panel_label_item_has_no_text_detection_points():
     removed_field = "text" + "_det" + "_points"
     assert removed_field not in fields
     assert "text_crops" in fields
+    assert "tokens" in fields
 
 
 def test_save_rec_hard_samples_mismatch(tmp_path, run_mod):

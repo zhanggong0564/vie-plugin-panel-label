@@ -12,7 +12,12 @@ import time
 import cv2
 import numpy as np
 
-from services.base import CtcRecognitionResult
+from services.base import (
+    CoordinateSpace,
+    CtcRecognitionResult,
+    OCRToken,
+    Region,
+)
 from services.inference import InferenceRunner
 from services.rfdetr import RFDetrInfer
 from utils import vision_logger
@@ -191,6 +196,7 @@ class OCRPipeline:
 
         text_crops = []
         texts = []
+        rec_results = []
         if mask_rois:
             rotated_crops, uncertain_indices = self._orient_crops(
                 list(mask_rois)
@@ -220,12 +226,33 @@ class OCRPipeline:
         ]
         roi_classes_ids = class_ids[ori_index]
         confidences = [scores[idx] for idx in ori_index]
+        tokens = [
+            OCRToken(
+                text=text,
+                region=Region(
+                    polygon=tuple(
+                        (float(x), float(y))
+                        for x, y in np.asarray(position).reshape(-1, 2)
+                    ),
+                    space=CoordinateSpace.PIXEL,
+                ),
+                recognition_score=float(rec_result.score),
+                detection_score=float(detection_score),
+            )
+            for position, text, rec_result, detection_score in zip(
+                positions,
+                texts,
+                rec_results,
+                confidences,
+            )
+        ]
         return PanellabelItem(
             Points=positions,
             index=ori_index,
             class_id=roi_classes_ids.tolist(),
             texts=texts,
             confidence=confidences,
+            tokens=tokens,
             text_crops=text_crops,
         )
 

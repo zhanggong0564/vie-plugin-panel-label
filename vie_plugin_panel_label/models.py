@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List
 
+from services.base import OCRToken
+
 
 class ErrorType(str, Enum):
     MISSING = "missing"
@@ -25,8 +27,9 @@ class PanellabelItem:
     Points: List[np.ndarray] = field(default_factory=list)
     index: List[int] = field(default_factory=list)
     class_id: List[int] = field(default_factory=list)
-    texts: List[str] = field(default_factory=list)
+    texts: list[str | None] = field(default_factory=list)
     confidence: List[float] = field(default_factory=list)
+    tokens: list[OCRToken] = field(default_factory=list)
     # 识别模型实际输入的文本行小图（rotated_crop，与 texts 逐项对齐；无识别处为 None）。供数据回流落盘用。
     text_crops: List = field(default_factory=list)
 

@@ -10,6 +10,7 @@ import yaml
 from services.base import (
     BaseClassificationPipeline,
     BaseCtcRecognitionPipeline,
+    CtcRecognitionResult,
 )
 from services.inference import InferenceRunner
 
@@ -194,7 +195,7 @@ class PanelLabelTextRecognizer(BaseCtcRecognitionPipeline):
             max_width=max_width,
         )
 
-    def predict(self, images: Sequence[np.ndarray]) -> list[dict[str, str | float]]:
+    def predict(self, images: Sequence[np.ndarray]) -> list[CtcRecognitionResult]:
         """Recognize one ROI batch in a single backend invocation."""
         return super().predict(images)
 

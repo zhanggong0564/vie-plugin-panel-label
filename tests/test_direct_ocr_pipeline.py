@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import cv2
 import numpy as np
+import pytest
 
 from services.base import ClassificationResult, CtcRecognitionResult
 from vie_plugin_panel_label.panel_label_detect import OCRPipeline
@@ -217,7 +218,17 @@ def test_infer_preserves_sorted_line_mapping_across_all_output_fields():
     assert result.confidence == [0.82, 0.91]
     assert result.texts == [None, "LINE0"]
     assert len(result.Points) == len(result.index) == len(result.class_id) == 2
-    assert len(result.confidence) == len(result.texts) == len(result.text_crops) == 2
+    assert (
+        len(result.confidence)
+        == len(result.texts)
+        == len(result.tokens)
+        == len(result.text_crops)
+        == 2
+    )
+    assert result.tokens[0].text is None
+    assert result.tokens[0].detection_score == pytest.approx(0.82)
+    assert result.tokens[1].text == "LINE0"
+    assert result.tokens[1].recognition_score == pytest.approx(0.95)
     assert np.array_equal(result.text_crops[0], roi_for_line_2)
     assert np.array_equal(result.text_crops[1], cv2.rotate(roi_for_line_0, cv2.ROTATE_180))
     assert result.Points == [

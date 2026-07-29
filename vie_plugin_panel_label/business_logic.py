@@ -120,6 +120,11 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             class_id=[results.class_id[index] for index in keep_indices],
             texts=[results.texts[index] for index in keep_indices],
             confidence=[results.confidence[index] for index in keep_indices],
+            tokens=(
+                [results.tokens[index] for index in keep_indices]
+                if results.tokens
+                else []
+            ),
             text_crops=(
                 [results.text_crops[index] for index in keep_indices]
                 if results.text_crops
