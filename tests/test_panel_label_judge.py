@@ -164,6 +164,78 @@ class TestPanelLabelAnalyze:
         result = judge.analyze(observed, standard_result, rule="front")
         assert result.result is True
 
+    def test_matches_later_standard_candidate(self, judge):
+        observed = PanellabelItem(texts=["A", "C", "B"])
+
+        result = judge.analyze(
+            observed,
+            [["A", "B", "C"], ["A", "C", "B"]],
+        )
+
+        assert result.result is True
+        assert result.message == ErrorType.OK.value
+        assert result.standard_result == ["A", "C", "B"]
+
+    def test_first_matching_candidate_wins(self, judge):
+        observed = PanellabelItem(texts=["TCU-D01"])
+
+        result = judge.analyze(
+            observed,
+            [["TCU-DO1"], ["TCU-D01"]],
+        )
+
+        assert result.result is True
+        assert result.standard_result == ["TCU-DO1"]
+
+    def test_closest_same_length_candidate_drives_mismatch_details(self, judge):
+        observed = PanellabelItem(texts=["A", "X", "C"])
+
+        result = judge.analyze(
+            observed,
+            [["X", "Y", "C"], ["A", "B", "C"]],
+        )
+
+        assert result.result is False
+        assert result.message == ErrorType.MISMATCH.value
+        assert result.standard_result == ["A", "B", "C"]
+        assert result.error_indexs == [1]
+
+    def test_closest_length_candidate_drives_count_error(self, judge):
+        observed = PanellabelItem(texts=["A", "B", "C"])
+
+        result = judge.analyze(
+            observed,
+            [["A"], ["A", "B", "C", "D"]],
+        )
+
+        assert result.result is False
+        assert result.message == ErrorType.MISSING.value
+        assert result.standard_result == ["A", "B", "C", "D"]
+
+    def test_candidate_tie_keeps_input_order(self, judge):
+        observed = PanellabelItem(texts=["A", "X"])
+
+        result = judge.analyze(
+            observed,
+            [["A", "B"], ["A", "C"]],
+        )
+
+        assert result.result is False
+        assert result.standard_result == ["A", "B"]
+        assert result.error_indexs == [1]
+
+    def test_comparison_rule_applies_to_every_candidate(self, judge):
+        observed = PanellabelItem(texts=["A/other", "C/value"])
+
+        result = judge.analyze(
+            observed,
+            [["A/original", "B/original"], ["A/original", "C/original"]],
+            rule="front",
+        )
+
+        assert result.result is True
+        assert result.standard_result == ["A/original", "C/original"]
+
 
 class TestGuidelineFilter:
     def test_points_inside_rect_kept(self, judge, guideline):
@@ -360,6 +432,30 @@ class TestBusinessLogicPostProcess:
         assert len(mom.detailList) == 3
         for item in mom.detailList:
             assert item.status is True
+
+    def test_later_standard_candidate_marks_response_success(self, judge, guideline):
+        results = PanellabelItem(
+            Points=[
+                [200, 200, 300, 200, 300, 300, 200, 300],
+                [400, 200, 500, 200, 500, 300, 400, 300],
+            ],
+            index=[0, 1],
+            class_id=[0, 0],
+            texts=["LINE2", "LINE1"],
+            confidence=[0.95, 0.88],
+        )
+        judge.enable_guideline_filter = True
+        ctx = _make_ctx(
+            judge,
+            results,
+            [["LINE1", "LINE2"], ["LINE2", "LINE1"]],
+            guideline,
+        )
+
+        judge.business_post_process(ctx)
+
+        assert ctx.result.status is True
+        assert all(item.status is True for item in ctx.result.detailList)
 
     def test_mismatch_items_have_false_status(self, judge, standard_result, guideline):
         # ROI: (0.1,0.1,0.8,0.8) * (w=1000,h=800) = rect(100,80,800,640)
