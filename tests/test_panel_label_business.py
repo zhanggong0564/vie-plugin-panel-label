@@ -79,6 +79,49 @@ class TestRequestParamsValidation:
         )
         assert mp.guideline_coordinates == (0.1, 0.2, 0.3, 0.4)
 
+    @pytest.mark.parametrize(
+        ("line_order", "expected"),
+        [
+            ("A,B", [["A", "B"]]),
+            (" A, B ; B, A ", [["A", "B"], ["B", "A"]]),
+            (["A", "B"], [["A", "B"]]),
+            ([[" A ", "B"], ["B", " A "]], [["A", "B"], ["B", "A"]]),
+        ],
+    )
+    def test_line_order_parsed_as_candidates(self, line_order, expected):
+        from vie_plugin_panel_label.schemas import ModelParams
+
+        mp = ModelParams(
+            product_type="TK2",
+            line_order=line_order,
+            guideline_coordinates="0.1,0.2,0.3,0.4",
+        )
+
+        assert mp.line_order == expected
+
+    @pytest.mark.parametrize(
+        "line_order",
+        [
+            "",
+            ";",
+            "A,B;",
+            ["", " "],
+            [["A"], []],
+            ["A", ["B"]],
+            [[1]],
+        ],
+    )
+    def test_invalid_line_order_candidates_raise(self, line_order):
+        from pydantic import ValidationError
+        from vie_plugin_panel_label.schemas import ModelParams
+
+        with pytest.raises(ValidationError):
+            ModelParams(
+                product_type="TK2",
+                line_order=line_order,
+                guideline_coordinates="0.1,0.2,0.3,0.4",
+            )
+
     def test_guideline_8_values_parsed(self):
         """8 值四边形可解析为长度 8 元组"""
         from vie_plugin_panel_label.schemas import ModelParams
