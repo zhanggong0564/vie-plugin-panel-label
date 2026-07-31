@@ -18,8 +18,11 @@ class ModelParams(VisualReferenceParams):
     product_type: str = Field(..., description="产品型号(例如:QF2)")
     rule: Literal["front", "back", "all"] = Field(default="all", description="字符比较规则：front=斜杠前，back=斜杠后，all=全检")
     # 标准线标顺序与引导框由业务随请求下发，不再从本地词典读取。
-    # line_order：逗号分隔的标准 OCR 顺序，如 "TK2-2,TK2-1"。
-    line_order: List[str] = Field(..., description="标准线标顺序，逗号分隔，如 'TK2-2,TK2-1'")
+    # line_order：分号分隔候选顺序，候选内用逗号分隔，如 "TK2-2,TK2-1;TK2-1,TK2-2"。
+    line_order: List[List[str]] = Field(
+        ...,
+        description="候选线标顺序；分号分隔候选，逗号分隔线标，如 'TK2-2,TK2-1;TK2-1,TK2-2'",
+    )
     # guideline_coordinates：归一化引导区域。4 值=轴对齐矩形 x,y,w,h；
     # 8 值=四边形 x1,y1,x2,y2,x3,y3,x4,y4（顺时针四角）。
     guideline_coordinates: Tuple[float, ...] = Field(
@@ -30,10 +33,30 @@ class ModelParams(VisualReferenceParams):
     @field_validator("line_order", mode="before")
     @classmethod
     def _split_line_order(cls, v):
-        """把逗号分隔字符串拆成去空白、去空项的列表；已是列表则原样放行。"""
+        """将字符串、一维列表或二维列表统一为非空候选顺序列表。"""
         if isinstance(v, str):
-            return [t.strip() for t in v.split(",") if t.strip()]
-        return v
+            raw_candidates = [candidate.split(",") for candidate in v.split(";")]
+        elif isinstance(v, (list, tuple)):
+            if not v:
+                raise ValueError("line_order 至少需要一个候选顺序")
+            if all(isinstance(item, str) for item in v):
+                raw_candidates = [v]
+            elif all(isinstance(item, (list, tuple)) for item in v):
+                raw_candidates = v
+            else:
+                raise ValueError("line_order 必须是字符串、一维字符串列表或二维字符串列表")
+        else:
+            return v
+
+        candidates = []
+        for candidate in raw_candidates:
+            if any(not isinstance(item, str) for item in candidate):
+                raise ValueError("line_order 中的线标必须是字符串")
+            normalized = [item.strip() for item in candidate if item.strip()]
+            if not normalized:
+                raise ValueError("line_order 候选顺序不能为空")
+            candidates.append(normalized)
+        return candidates
 
     @field_validator("guideline_coordinates", mode="before")
     @classmethod
