@@ -166,6 +166,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 product_type=ctx.product_type,
                 scenario="panel_label",
             )
+        standard_candidates = self._normalize_standard_candidates(standard_result)
         if self.enable_guideline_filter:
             # 开关开启时 guideline 仍为必要参数；关闭时跳过 ROI 过滤，参数可缺省。
             if not norm_rect:
@@ -179,20 +180,21 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             results = ctx.raw_result
         # 按型号固定排序模式对线标重排（消除运行时猜布局/调阈值）。
         ctx.raw_result = order_panel_item(results, get_sort_mode(ctx.product_type))
-        panel_info = self.analyze(ctx.raw_result, standard_result, ctx.rule)
+        panel_info = self.analyze(ctx.raw_result, standard_candidates, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
         observed_count = len(panel_info.observed_result)
-        standard_count = len(standard_result)
-        if observed_count != standard_count:
+        standard_counts = [len(candidate) for candidate in standard_candidates]
+        if observed_count not in standard_counts:
             vision_logger.warning(
-                "panel_label line_order count mismatch, product_type={}, observed_count={}, standard_count={}, "
-                "standard_result={}, observed_result={}",
+                "panel_label line_order count mismatch, product_type={}, observed_count={}, "
+                "candidate_count={}, standard_counts={}, selected_standard_result={}, observed_result={}",
                 ctx.product_type,
                 observed_count,
-                standard_count,
-                standard_result,
+                len(standard_candidates),
+                standard_counts,
+                panel_info.standard_result,
                 panel_info.observed_result,
             )
         data_list = []
@@ -201,8 +203,8 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             item_name = observed_item
             if item_name is None:
                 expected_name = (
-                    standard_result[i]
-                    if i < len(standard_result)
+                    panel_info.standard_result[i]
+                    if i < len(panel_info.standard_result)
                     else None
                 )
                 vision_logger.warning(
@@ -288,6 +290,13 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         # 线标字体下 OCR 区分不了字母 O 与数字 0（TCU-DO1 常读成 TCU-D01），统一归 0 比对
         return key.lower().replace("o", "0")
 
+    @staticmethod
+    def _normalize_standard_candidates(standard_result):
+        """兼容内部调用仍传入单个一维标准顺序。"""
+        if standard_result and isinstance(standard_result[0], str):
+            return [standard_result]
+        return standard_result
+
     def analyze(
         self,
         observed_result: PanellabelItem,
@@ -298,34 +307,60 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             self._fix_slash_misrecognition(text)
             for text in observed_result.texts
         ]
+        standard_candidates = self._normalize_standard_candidates(standard_result)
+        observed_count = len(corrected_texts)
+        selected_candidate = standard_candidates[0]
+        selected_error_indexs = []
+        selected_score = None
+        matched = False
+
+        for candidate_index, candidate in enumerate(standard_candidates):
+            error_indexs = [
+                index
+                for index, (observed_item, standard_item) in enumerate(
+                    zip(corrected_texts, candidate)
+                )
+                if self._compare_key(observed_item, rule)
+                != self._compare_key(standard_item, rule)
+            ]
+            count_gap = abs(observed_count - len(candidate))
+            if count_gap == 0 and not error_indexs:
+                selected_candidate = candidate
+                selected_error_indexs = []
+                matched = True
+                break
+
+            score = (
+                0 if count_gap == 0 else 1,
+                count_gap,
+                len(error_indexs),
+                candidate_index,
+            )
+            if selected_score is None or score < selected_score:
+                selected_candidate = candidate
+                selected_error_indexs = error_indexs
+                selected_score = score
+
         panel_info = PanelInfo(
-            standard_result=standard_result,
+            standard_result=selected_candidate,
             observed_result=corrected_texts,
             observed_result_points=observed_result.Points,
             class_id=observed_result.class_id,
             confidence=observed_result.confidence,
         )
-        panel_info.result = True
-        panel_info.message = ErrorType.OK.value
+        if matched:
+            panel_info.result = True
+            panel_info.message = ErrorType.OK.value
+            return panel_info
 
-        observed_count = len(panel_info.observed_result)
-        standard_count = len(standard_result)
-
+        standard_count = len(selected_candidate)
         if observed_count < standard_count:
             panel_info.message = ErrorType.MISSING.value
-            panel_info.result = False
             return panel_info
         if observed_count > standard_count:
             panel_info.message = ErrorType.EXTRA.value
-            panel_info.result = False
             return panel_info
 
-        for i, item in enumerate(panel_info.observed_result):
-            if self._compare_key(item, rule) != self._compare_key(
-                standard_result[i],
-                rule,
-            ):
-                panel_info.message = ErrorType.MISMATCH.value
-                panel_info.result = False
-                panel_info.error_indexs.append(i)
+        panel_info.message = ErrorType.MISMATCH.value
+        panel_info.error_indexs = selected_error_indexs
         return panel_info
