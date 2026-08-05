@@ -21,6 +21,20 @@ def rotated_box_overlap(poly1, poly2) -> float:
     return float(intersection / smaller_area) if smaller_area > 0 else 0.0
 
 
+def polygon_overlap(poly1, poly2) -> float:
+    """Return intersection-over-smaller-area for the actual polygons."""
+    polygon1 = np.asarray(poly1, dtype=np.float32).reshape(-1, 2)
+    polygon2 = np.asarray(poly2, dtype=np.float32).reshape(-1, 2)
+    intersection, _ = cv2.intersectConvexConvex(polygon1, polygon2)
+    if intersection <= 0:
+        return 0.0
+    smaller_area = min(
+        cv2.contourArea(polygon1),
+        cv2.contourArea(polygon2),
+    )
+    return float(intersection / smaller_area) if smaller_area > 0 else 0.0
+
+
 def dedup_overlapping_polygons(
     polygons,
     scores,
@@ -38,6 +52,11 @@ def dedup_overlapping_polygons(
         is_duplicate = any(
             class_ids[index] == class_ids[kept_index]
             and rotated_box_overlap(
+                polygons[index],
+                polygons[kept_index],
+            )
+            > overlap_thresh
+            and polygon_overlap(
                 polygons[index],
                 polygons[kept_index],
             )

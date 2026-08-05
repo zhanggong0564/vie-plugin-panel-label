@@ -18,6 +18,7 @@ from utils import vision_logger
 from vie_plugin_panel_label.polygon_geometry import (
     dedup_overlapping_polygons,
     polygon_contains,
+    polygon_overlap,
     polygon_overlap_ratio,
     rect_contains,
     rotated_box_overlap,

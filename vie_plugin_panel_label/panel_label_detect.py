@@ -165,7 +165,7 @@ class OCRPipeline:
         scores = np.array(results.scores)
         mask_polygons = np.array(results.mask_polygons, dtype=object)
         # 二次去重：同一线标的重复检测框（全长框+半截框）轴对齐 NMS 抑制不掉，
-        # 按 mask 旋转框 IoS 去重，避免 observed 数多于标准数误判 extra。
+        # 旋转框与实际 mask 均高度重叠时才去重，避免相邻线标被误判为重复。
         if len(class_ids) > 1:
             keep = dedup_overlapping_polygons(
                 mask_polygons,
