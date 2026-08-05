@@ -2,14 +2,18 @@
 
 背景：YOLO 轴对齐 NMS（nmsThreshold=0.8）抑制不掉同一线标上的重复检测
 （典型为全长框 + 半截框），导致 observed_count 多于标准数判 extra。
-去重基于 mask 多边形最小外接旋转矩形的"交集/较小框面积"（IoS）：
-同一线标的重复框 IoS 接近 1，相邻倾斜线标的旋转框几乎不相交。
+去重要求 mask 多边形最小外接旋转矩形与实际多边形的
+"交集/较小面积"（IoS）均超过阈值，避免相邻线标的外接框重叠造成误删。
 """
 import numpy as np
 import pytest
 
 from vie_plugin_panel_label import utils as panel_utils
-from vie_plugin_panel_label.utils import dedup_overlapping_polygons, rotated_box_overlap
+from vie_plugin_panel_label.utils import (
+    dedup_overlapping_polygons,
+    polygon_overlap,
+    rotated_box_overlap,
+)
 
 
 def _rect(x1, y1, x2, y2):
@@ -39,6 +43,19 @@ class TestRotatedBoxOverlap:
         assert rotated_box_overlap(base, short) > 0.9
 
 
+class TestPolygonOverlap:
+    def test_contained_polygon_overlap_is_one(self):
+        full = _rect(0, 0, 40, 200)
+        half = _rect(0, 0, 40, 100)
+        assert polygon_overlap(full, half) == pytest.approx(1.0, abs=1e-3)
+
+    def test_disjoint_polygons_overlap_is_zero(self):
+        assert polygon_overlap(
+            _rect(0, 0, 40, 200),
+            _rect(60, 0, 100, 200),
+        ) == 0.0
+
+
 class TestDedupOverlappingPolygons:
     def test_duplicate_keeps_higher_score(self):
         polys = [_rect(0, 0, 40, 200), _rect(0, 0, 40, 100)]
@@ -54,6 +71,25 @@ class TestDedupOverlappingPolygons:
         polys = [_rect(0, 0, 40, 200), _rect(35, 0, 75, 200), _rect(70, 0, 110, 200)]
         keep = dedup_overlapping_polygons(polys, scores=[0.9, 0.8, 0.7], class_ids=[0, 0, 0], overlap_thresh=0.6)
         assert keep == [0, 1, 2]
+
+    def test_overlapping_rotated_boxes_with_disjoint_masks_both_kept(
+        self, monkeypatch
+    ):
+        """相邻线标外接框高度重叠，但实际 mask 不重叠时不得去重。"""
+        monkeypatch.setattr(
+            "vie_plugin_panel_label.polygon_geometry.rotated_box_overlap",
+            lambda _poly1, _poly2: 0.95,
+        )
+        polys = [_rect(0, 0, 40, 200), _rect(60, 0, 100, 200)]
+
+        keep = dedup_overlapping_polygons(
+            polys,
+            scores=[0.9, 0.8],
+            class_ids=[0, 0],
+            overlap_thresh=0.6,
+        )
+
+        assert keep == [0, 1]
 
     def test_cross_class_overlap_not_deduped(self):
         """仅同类之间去重：line 与 QFU 重叠不互相抑制"""
