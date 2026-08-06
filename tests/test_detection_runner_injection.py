@@ -38,6 +38,7 @@ def test_panel_label_detect_uses_polygon_only_masks_by_default():
     model = PanelLabelDetect(runner=_fake_runner())
 
     assert model.mask_output == "polygons_only"
+    assert model.mask_threshold == 0.7
 
 
 def test_panel_label_detect_can_restore_full_masks():
@@ -78,6 +79,7 @@ def test_ocr_pipeline_injects_all_three_runners():
         task="seg",
         runner=detection_runner,
         cpu_fast_path=True,
+        mask_threshold=0.7,
     )
     orient_class.assert_called_once_with(
         "ori/inference.yml", runner=orientation_runner
@@ -109,7 +111,7 @@ def test_judge_initialization_creates_three_onnx_runners():
         call(
             RunnerSpec(
                 scenario="panel_label",
-                onnx_path="./weights/panel_label/v2/rfdetr-seg-nano-v1.1.onnx",
+                onnx_path="./weights/panel_label/v2/rfdetr-seg-nano_v1.2.onnx",
             ),
             options,
         ),
@@ -140,6 +142,7 @@ def test_judge_initialization_creates_three_onnx_runners():
         None,
         dedup_overlap_thresh=0.6,
         cpu_fast_path=True,
+        mask_threshold=0.7,
         detection_runner=runners[0],
         orientation_runner=runners[1],
         recognition_runner=runners[2],
