@@ -5,8 +5,12 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-06
+
 ### 修复
 
+- 线标 RF-DETR 分割模型升级为 `rfdetr-seg-nano_v1.2.onnx`，修复紧密排列
+  线标在分割结果中相互粘连的问题。
 - 线标 RF-DETR mask 概率阈值调整为 `0.7`，并支持通过
   `PANEL_LABEL_MASK_THRESHOLD` 在启动时覆盖和校验。
 - 线标实例去重增加实际 mask 多边形重叠校验，避免相邻线标的旋转外接框高度
