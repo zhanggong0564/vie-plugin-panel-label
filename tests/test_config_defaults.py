@@ -10,8 +10,9 @@ from services.rfdetr import RFDetrInfer
 
 def test_panel_label_config_defaults():
     cfg = PanelLabelConfig()
-    assert cfg.model_path == "./weights/panel_label/v2/rfdetr-seg-nano-v1.1.onnx"
+    assert cfg.model_path == "./weights/panel_label/v2/rfdetr-seg-nano_v1.2.onnx"
     assert cfg.confThreshold == 0.6
+    assert cfg.mask_threshold == 0.7
 
 
 def test_cpu_fast_path_defaults_enabled(monkeypatch):
@@ -28,6 +29,20 @@ def test_cpu_fast_path_can_be_disabled(monkeypatch):
 
 def test_panel_label_detect_uses_rfdetr_base():
     assert issubclass(PanelLabelDetect, RFDetrInfer)
+
+
+def test_mask_threshold_env_override(monkeypatch):
+    monkeypatch.setenv("PANEL_LABEL_MASK_THRESHOLD", "0.8")
+
+    assert PanelLabelConfig().mask_threshold == 0.8
+
+
+@pytest.mark.parametrize("value", ["0", "1", "invalid"])
+def test_invalid_mask_threshold_is_rejected(monkeypatch, value):
+    monkeypatch.setenv("PANEL_LABEL_MASK_THRESHOLD", value)
+
+    with pytest.raises(ValidationError):
+        PanelLabelConfig()
 
 
 def test_config_points_to_onnx_models():
