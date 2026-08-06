@@ -40,6 +40,7 @@ class PanelLabelDetect(RFDetrInfer):
         *,
         runner: InferenceRunner,
         cpu_fast_path=True,
+        mask_threshold=0.7,
     ):
         super().__init__(
             2,
@@ -49,6 +50,7 @@ class PanelLabelDetect(RFDetrInfer):
             mask_output=(
                 "polygons_only" if cpu_fast_path else "full"
             ),
+            mask_threshold=mask_threshold,
         )
         self.id2name = {
             0: "line",
@@ -68,6 +70,7 @@ class OCRPipeline:
         text_rec_input_shape=None,
         dedup_overlap_thresh=0.6,
         cpu_fast_path=True,
+        mask_threshold=0.7,
         *,
         detection_runner: InferenceRunner,
         orientation_runner: InferenceRunner,
@@ -79,6 +82,7 @@ class OCRPipeline:
             task="seg",
             runner=detection_runner,
             cpu_fast_path=cpu_fast_path,
+            mask_threshold=mask_threshold,
         )
         # 同类实例旋转框 IoS 去重阈值（>=1 关闭），抑制同一线标的重复检测框
         self.dedup_overlap_thresh = dedup_overlap_thresh
