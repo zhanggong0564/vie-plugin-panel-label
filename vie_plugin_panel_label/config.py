@@ -14,7 +14,7 @@ class PanelLabelConfig(SceneSettings):
     )
 
     model_path: str = (
-        "./weights/panel_label/v2/rfdetr-seg-nano-v1.1.onnx"
+        "./weights/panel_label/v2/rfdetr-seg-nano_v1.2.onnx"
     )
     orient_model_path: str = (
         "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx"
@@ -32,6 +32,7 @@ class PanelLabelConfig(SceneSettings):
     )
     conf_threshold: float = Field(default=0.6, ge=0, le=1)
     nms_threshold: float = Field(default=0.8, ge=0, le=1)
+    mask_threshold: float = Field(default=0.7, gt=0, lt=1)
     text_orient_score_thresh: float = Field(default=0.9, ge=0, le=1)
     text_rec_score_thresh: float = Field(default=0.7, ge=0, le=1)
     text_rec_input_shape: tuple[int, int, int] | None = None
