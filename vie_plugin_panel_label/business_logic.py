@@ -20,6 +20,7 @@ from services.inference import (
     create_inference_runner,
 )
 from utils import vision_logger
+from utils.request_logging import log_json
 from .utils import polygon_overlap_ratio
 from .ordering import order_panel_item
 from .product_type import get_sort_mode
@@ -33,6 +34,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         cfg = PanelLabelConfig()
         self.enable_guideline_filter = cfg.enable_guideline_filter
         self.guideline_overlap_thresh = cfg.guideline_overlap_thresh
+        self.text_rec_score_thresh = cfg.text_rec_score_thresh
         self.class_name = {
             0: "line",
             1: "QFU",
@@ -168,6 +170,7 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 scenario="panel_label",
             )
         standard_candidates = self._normalize_standard_candidates(standard_result)
+        raw_count = len(ctx.raw_result.texts)
         if self.enable_guideline_filter:
             # 开关开启时 guideline 仍为必要参数；关闭时跳过 ROI 过滤，参数可缺省。
             if not norm_rect:
@@ -180,51 +183,21 @@ class PanelLabelJudgeApi(BusinessLogicBase):
         else:
             results = ctx.raw_result
         # 按型号固定排序模式对线标重排（消除运行时猜布局/调阈值）。
-        ctx.raw_result = order_panel_item(results, get_sort_mode(ctx.product_type))
+        sort_mode = get_sort_mode(ctx.product_type)
+        ctx.raw_result = order_panel_item(results, sort_mode)
         panel_info = self.analyze(ctx.raw_result, standard_candidates, ctx.rule)
         mom_result = MoMResult()
         mom_result.status = panel_info.result
         mom_result.message = panel_info.message
-        observed_count = len(panel_info.observed_result)
-        standard_counts = [len(candidate) for candidate in standard_candidates]
-        if observed_count not in standard_counts:
-            vision_logger.warning(
-                "panel_label line_order count mismatch, product_type={}, observed_count={}, "
-                "candidate_count={}, standard_counts={}, selected_standard_result={}, observed_result={}",
-                ctx.product_type,
-                observed_count,
-                len(standard_candidates),
-                standard_counts,
-                panel_info.standard_result,
-                panel_info.observed_result,
-            )
+        self._log_judgment(
+            ctx, panel_info, standard_candidates, mom_result,
+            sort_mode=sort_mode, raw_count=raw_count,
+        )
         data_list = []
         for i, observed_item in enumerate(panel_info.observed_result):
             status = panel_info.result or i not in panel_info.error_indexs
             item_name = observed_item
             if item_name is None:
-                expected_name = (
-                    panel_info.standard_result[i]
-                    if i < len(panel_info.standard_result)
-                    else None
-                )
-                vision_logger.warning(
-                    "panel_label observed text is None, fallback detailList.name to empty string, "
-                    "product_type={}, idx={}, expected_name={}, coordinate={}, confidence={}",
-                    ctx.product_type,
-                    i,
-                    expected_name,
-                    (
-                        panel_info.observed_result_points[i]
-                        if i < len(panel_info.observed_result_points)
-                        else None
-                    ),
-                    (
-                        panel_info.confidence[i]
-                        if i < len(panel_info.confidence)
-                        else None
-                    ),
-                )
                 item_name = ""
             elif not isinstance(item_name, str):
                 vision_logger.warning(
@@ -247,6 +220,57 @@ class PanelLabelJudgeApi(BusinessLogicBase):
             )
         mom_result.detailList = data_list
         ctx.result = mom_result
+
+    def _log_judgment(
+        self, ctx, panel_info: PanelInfo,
+        standard_candidates: list[list[str | None]], mom_result: MoMResult,
+        *, sort_mode: str, raw_count: int,
+    ) -> None:
+        """记录排序后的判定依据，独立于响应明细组装。"""
+        observed_count = len(panel_info.observed_result)
+        standard_counts = [len(candidate) for candidate in standard_candidates]
+        skipped_positions = [
+            index + 1 for index, text in enumerate(panel_info.standard_result)
+            if text is None or text.strip().lower() == "null"
+        ]
+        tokens = ctx.raw_result.tokens
+        summary = {
+            "product_type": ctx.product_type,
+            "verdict": mom_result.verdict.value,
+            "reason": panel_info.message,
+            "rule": ctx.rule,
+            "sort_mode": sort_mode,
+            "before_guideline_count": raw_count,
+            "observed_count": observed_count,
+            "expected_count": len(panel_info.standard_result),
+            "candidate_counts": standard_counts,
+            "selected_candidate": standard_candidates.index(panel_info.standard_result) + 1,
+            "expected": panel_info.standard_result,
+            "observed": panel_info.observed_result,
+            "skipped_positions": skipped_positions,
+            "unrecognized_positions": [
+                index + 1 for index, text in enumerate(panel_info.observed_result)
+                if text is None and index + 1 not in skipped_positions
+            ],
+            "recognition_scores": [
+                tokens[index].recognition_score if index < len(tokens) else None
+                for index in range(observed_count)
+            ],
+            "detection_scores": panel_info.confidence,
+            "recognition_threshold": self.text_rec_score_thresh,
+            "mismatches": [
+                {
+                    "position": index + 1,
+                    "expected": panel_info.standard_result[index],
+                    "observed": panel_info.observed_result[index],
+                    "expected_key": self._compare_key(panel_info.standard_result[index], ctx.rule),
+                    "observed_key": self._compare_key(panel_info.observed_result[index], ctx.rule),
+                }
+                for index in panel_info.error_indexs
+            ],
+        }
+        log = vision_logger.info if panel_info.result else vision_logger.warning
+        log("线标判定 {}", log_json(summary), event="panel_label.judged")
 
     @staticmethod
     def _fix_slash_misrecognition(text: str) -> str:
