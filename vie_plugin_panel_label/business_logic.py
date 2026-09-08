@@ -294,7 +294,9 @@ class PanelLabelJudgeApi(BusinessLogicBase):
     @staticmethod
     def _normalize_standard_candidates(standard_result):
         """兼容内部调用仍传入单个一维标准顺序。"""
-        if standard_result and isinstance(standard_result[0], str):
+        if standard_result and (
+            standard_result[0] is None or isinstance(standard_result[0], str)
+        ):
             return [standard_result]
         return standard_result
 
@@ -321,7 +323,10 @@ class PanelLabelJudgeApi(BusinessLogicBase):
                 for index, (observed_item, standard_item) in enumerate(
                     zip(corrected_texts, candidate)
                 )
-                if self._compare_key(observed_item, rule)
+                # null 只跳过当前位置的文字校验，不删除占位或放宽数量校验。
+                if standard_item is not None
+                and standard_item.strip().lower() != "null"
+                and self._compare_key(observed_item, rule)
                 != self._compare_key(standard_item, rule)
             ]
             count_gap = abs(observed_count - len(candidate))
