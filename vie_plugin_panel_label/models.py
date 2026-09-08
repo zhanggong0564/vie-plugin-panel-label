@@ -47,8 +47,8 @@ class PanelInfo:
     """单张图的线标判定结果。"""
     result: bool = False
     product_type: str = ""
-    # 标准ocr结果
-    standard_result: list[str] = field(default_factory=list)
+    # 标准ocr结果，None 占位并跳过对应位置的文字比对
+    standard_result: list[str | None] = field(default_factory=list)
     # 观察到的ocr结果
     observed_result: list[str] = field(default_factory=list)
     # 观察到的ocr结果的点坐标
