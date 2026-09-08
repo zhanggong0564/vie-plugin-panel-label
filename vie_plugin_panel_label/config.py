@@ -14,7 +14,7 @@ class PanelLabelConfig(SceneSettings):
     )
 
     model_path: str = (
-        "./weights/panel_label/v2/rfdetr-seg-nano_v1.2.onnx"
+        "./weights/panel_label/v2/rfdetr-seg-nano_v1.3.onnx"
     )
     orient_model_path: str = (
         "./weights/panel_label/v2/textline_ori_lcnet_v2.onnx"
