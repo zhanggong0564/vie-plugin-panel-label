@@ -82,6 +82,13 @@ class PanelLabelRouter(BaseRouter):
         )
         return input
 
+    def request_log_params(self, request_params: PanelLabelRequest) -> dict:
+        return {
+            **super().request_log_params(request_params),
+            "line_order": request_params.modelParams.line_order,
+            "guideline_coordinates": request_params.modelParams.guideline_coordinates,
+        }
+
 
 panel_label_router = PanelLabelRouter(
     router_name="panel_router",
