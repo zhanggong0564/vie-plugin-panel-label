@@ -34,6 +34,91 @@ def judge():
 
 
 class TestPanelLabelAnalyze:
+    @pytest.mark.parametrize("rule", ["all", "front", "back"])
+    @pytest.mark.parametrize("placeholder", [None, "null", " NULL "])
+    @pytest.mark.parametrize("text", ["WRONG/CHARACTERS", "", None])
+    def test_null_skips_text_without_shifting_order(self, judge, rule, placeholder, text):
+        observed = PanellabelItem(texts=["A", "B", text, "C"])
+
+        result = judge.analyze(observed, ["A", "B", placeholder, "C"], rule)
+
+        assert result.result is True
+        assert result.message == ErrorType.OK.value
+        assert result.error_indexs == []
+        assert result.observed_result == observed.texts
+
+    @pytest.mark.parametrize("standard", [[None, "A"], [None, None], [[None, "A"]]])
+    def test_null_at_first_position(self, judge, standard):
+        result = judge.analyze(PanellabelItem(texts=[None, "A"]), standard)
+
+        assert result.result is True
+
+    @pytest.mark.parametrize("rule", ["all", "front", "back"])
+    @pytest.mark.parametrize(
+        "skip_indices", [(0,), (1,), (2,), (3,), (1, 3), (1, 2), (0, 1, 2, 3)]
+    )
+    def test_null_at_arbitrary_positions(self, judge, rule, skip_indices):
+        standard = ["A/a", "B/b", "C/c", "D/d"]
+        texts = standard.copy()
+        for index in skip_indices:
+            standard[index] = None
+            texts[index] = "ARBITRARY/TEXT" if index % 2 else None
+
+        result = judge.analyze(PanellabelItem(texts=texts), standard, rule)
+
+        assert result.result is True
+        assert result.error_indexs == []
+        assert result.standard_result == standard
+        assert result.observed_result == texts
+
+    @pytest.mark.parametrize("standard_text", ["nlll", "A/null", "null/A"])
+    def test_only_entire_null_label_is_a_placeholder(self, judge, standard_text):
+        result = judge.analyze(PanellabelItem(texts=["WRONG"]), [standard_text])
+
+        assert result.result is False
+        assert result.message == ErrorType.MISMATCH.value
+        assert result.error_indexs == [0]
+
+    def test_null_does_not_hide_other_mismatches(self, judge):
+        result = judge.analyze(
+            PanellabelItem(texts=["A", "B", "ANY", "WRONG"]),
+            ["A", "B", None, "C"],
+        )
+
+        assert result.result is False
+        assert result.message == ErrorType.MISMATCH.value
+        assert result.error_indexs == [3]
+
+    @pytest.mark.parametrize(
+        ("texts", "message"),
+        [(["A", "B", "C"], ErrorType.MISSING),
+         (["A", "B", "ANY", "C", "EXTRA"], ErrorType.EXTRA)],
+    )
+    def test_null_still_counts_as_one_position(self, judge, texts, message):
+        result = judge.analyze(PanellabelItem(texts=texts), ["A", "B", None, "C"])
+
+        assert result.result is False
+        assert result.message == message.value
+
+    def test_later_candidate_can_match_with_null(self, judge):
+        result = judge.analyze(
+            PanellabelItem(texts=["A", "B", None, "C"]),
+            [["A", "B", "D", "C"], ["A", "B", None, "C"]],
+        )
+
+        assert result.result is True
+        assert result.standard_result == ["A", "B", None, "C"]
+
+    def test_null_is_excluded_from_candidate_mismatch_score(self, judge):
+        result = judge.analyze(
+            PanellabelItem(texts=["A", "WRONG", "ANY", "C"]),
+            [["X", "B", "D", "C"], ["A", "B", None, "C"]],
+        )
+
+        assert result.result is False
+        assert result.standard_result == ["A", "B", None, "C"]
+        assert result.error_indexs == [1]
+
     def test_fix_slash_misrecognition_paired_brackets(self, judge):
         """成对括号不做修改"""
         assert judge._fix_slash_misrecognition("QF2-1(53)") == "QF2-1(53)"
