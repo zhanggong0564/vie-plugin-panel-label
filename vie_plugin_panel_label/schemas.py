@@ -8,7 +8,7 @@
 '''
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import List, Dict, Optional, Tuple, Literal  # 新增Optional
+from typing import List, Dict, Optional, Tuple, Literal, Union
 from schemas.common import VisualReferenceParams
 
 
@@ -34,7 +34,10 @@ class ModelParams(VisualReferenceParams):
         description="必填引导区域归一化坐标：4 值=矩形 x,y,w,h；8 值=四边形顺时针四角",
     )
 
-    @field_validator("line_order", mode="before")
+    @field_validator(
+        "line_order", mode="before",
+        json_schema_input_type=Union[str, List[Optional[str]], List[List[Optional[str]]]],
+    )
     @classmethod
     def _split_line_order(cls, v):
         """将字符串、一维列表或二维列表统一为非空候选顺序列表。"""
@@ -66,7 +69,10 @@ class ModelParams(VisualReferenceParams):
             candidates.append(normalized)
         return candidates
 
-    @field_validator("guideline_coordinates", mode="before")
+    @field_validator(
+        "guideline_coordinates", mode="before",
+        json_schema_input_type=Union[str, Tuple[float, ...]],
+    )
     @classmethod
     def _split_guideline(cls, v):
         """把逗号分隔字符串拆成浮点序列；仅允许 4 值(矩形)或 8 值(四边形)。"""

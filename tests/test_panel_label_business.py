@@ -118,7 +118,14 @@ class TestRequestParamsValidation:
         from vie_plugin_panel_label.schemas import ModelParams
 
         schema = ModelParams.model_json_schema()
-        item_schema = schema["properties"]["line_order"]["items"]["items"]
+        variants = schema["properties"]["line_order"]["anyOf"]
+        assert {variant["type"] for variant in variants} == {"string", "array"}
+        nested_array = next(
+            variant for variant in variants
+            if variant.get("type") == "array"
+            and variant["items"].get("type") == "array"
+        )
+        item_schema = nested_array["items"]["items"]
         assert {item["type"] for item in item_schema["anyOf"]} == {"string", "null"}
 
     @pytest.mark.parametrize(
