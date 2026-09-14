@@ -20,6 +20,28 @@ from . import business_logic  # noqa: F401  导入即触发 @scenario_registry.r
 
 
 class PanelLabelRouter(BaseRouter):
+    request_document_model = PanelLabelRequest
+    request_document_example = {
+        "product": "线标检测", "type": "物料号",
+        "modelParams": {
+            "product_type": "TK2", "rule": "all",
+            "line_order": "TK2-2,null,TK2-1;TK2-1,null,TK2-2",
+            "guideline_coordinates": "0.1,0.1,0.8,0.8",
+        },
+    }
+    request_document_notes = (
+        "`line_order` 支持分号分隔候选、逗号分隔线标的字符串，也支持一维或二维数组。"
+        "例如 `[[\"TK2-2\", null, \"TK2-1\"], [\"TK2-1\", null, \"TK2-2\"]]` 与示例等价。"
+        "字符串 null 大小写不敏感；JSON null 或字符串 null 占位仅跳过该位置的文字比对，"
+        "仍计入数量。去掉空白和空字符串后，每个候选必须非空。\n\n"
+        "`rule` 默认 all；front 比较斜杠前文字，back 比较斜杠后文字，all 比较完整文字。"
+        "`guideline_coordinates` 为必填的原图归一化引导区域，支持逗号分隔字符串或数值数组："
+        "4 值为矩形 x,y,w,h；8 值为顺时针四角 x1,y1,x2,y2,x3,y3,x4,y4。"
+        "请将示例型号、线标顺序及坐标替换为待检产品的实际值。\n\n"
+        "`guide_line` 和 `example_images` 可省略，默认空列表；本接口使用 guideline_coordinates 定位。"
+        "顶层允许透传额外字段，如 sn、AICameraModel，它们不属于必填参数。"
+    )
+
     def __init__(self, router_name, api_path, summary, description, detector_type, tag=None):
         super().__init__(router_name, api_path, summary, description, detector_type, tag=tag)
 
